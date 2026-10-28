@@ -1,0 +1,5 @@
+C:/Users/kumar/OneDrive/Desktop/frontend/build/CMakeFiles/CivicGrievanceGUI.dir
+C:/Users/kumar/OneDrive/Desktop/frontend/build/CMakeFiles/edit_cache.dir
+C:/Users/kumar/OneDrive/Desktop/frontend/build/CMakeFiles/rebuild_cache.dir
+C:/Users/kumar/OneDrive/Desktop/frontend/build/CMakeFiles/CivicGrievanceGUI_autogen_timestamp_deps.dir
+C:/Users/kumar/OneDrive/Desktop/frontend/build/CMakeFiles/CivicGrievanceGUI_autogen.dir
