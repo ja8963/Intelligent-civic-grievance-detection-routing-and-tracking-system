@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QDialogButtonBox>
 #include <QSpinBox>
+#include <QSettings>
 
 static const char* LOGIN_STYLE = R"(
 QDialog {
@@ -169,9 +170,16 @@ LoginDialog::LoginDialog(QWidget* parent)
     connect(dbSettingsBtn, &QPushButton::clicked, this, &LoginDialog::onDbSettingsClicked);
     connect(setupAdminBtn, &QPushButton::clicked, this, &LoginDialog::onSetupAdminClicked);
 
-    // Initial database connection check
+    // Initial database connection check: check db_config.ini first
+    QSettings settings("db_config.ini", QSettings::IniFormat);
+    QString host = settings.value("database/host", "127.0.0.1").toString();
+    int port = settings.value("database/port", 3306).toInt();
+    QString dbName = settings.value("database/name", "civic_grievance").toString();
+    QString dbUser = settings.value("database/user", "root").toString();
+    QString dbPass = settings.value("database/password", "").toString();
+
     if (!DatabaseManager::instance().isConnected()) {
-        DatabaseManager::instance().connectToDatabase("127.0.0.1", 3306, "civic_grievance", "root", "");
+        DatabaseManager::instance().connectToDatabase(host, port, dbName, dbUser, dbPass);
     }
     updateDbStatus();
 }
@@ -226,14 +234,21 @@ void LoginDialog::onDbSettingsClicked() {
     dlg.setWindowTitle("Configure MySQL Database Connection");
     dlg.setFixedSize(380, 300);
 
+    QSettings settings("db_config.ini", QSettings::IniFormat);
+    QString curHost = settings.value("database/host", "127.0.0.1").toString();
+    int curPort = settings.value("database/port", 3306).toInt();
+    QString curDb = settings.value("database/name", "civic_grievance").toString();
+    QString curUser = settings.value("database/user", "root").toString();
+    QString curPass = settings.value("database/password", "").toString();
+
     QFormLayout form(&dlg);
-    QLineEdit hostEdit("127.0.0.1", &dlg);
+    QLineEdit hostEdit(curHost, &dlg);
     QSpinBox portBox(&dlg);
     portBox.setRange(1, 65535);
-    portBox.setValue(3306);
-    QLineEdit dbEdit("civic_grievance", &dlg);
-    QLineEdit userEdit("root", &dlg);
-    QLineEdit passEdit(&dlg);
+    portBox.setValue(curPort);
+    QLineEdit dbEdit(curDb, &dlg);
+    QLineEdit userEdit(curUser, &dlg);
+    QLineEdit passEdit(curPass, &dlg);
     passEdit.setEchoMode(QLineEdit::Password);
     passEdit.setPlaceholderText("MySQL root password");
 
@@ -261,7 +276,15 @@ void LoginDialog::onDbSettingsClicked() {
             QMessageBox::critical(this, "Connection Error",
                                   "Failed to connect to MySQL database:\n" + DatabaseManager::instance().lastError());
         } else {
-            QMessageBox::information(this, "Success", "Connected to MySQL successfully!");
+            // Save configuration for automatic connection on next launch
+            settings.setValue("database/host", hostEdit.text().trimmed());
+            settings.setValue("database/port", portBox.value());
+            settings.setValue("database/name", dbEdit.text().trimmed());
+            settings.setValue("database/user", userEdit.text().trimmed());
+            settings.setValue("database/password", passEdit.text());
+            settings.sync();
+
+            QMessageBox::information(this, "Success", "Connected to MySQL successfully and settings saved!");
         }
         updateDbStatus();
     }

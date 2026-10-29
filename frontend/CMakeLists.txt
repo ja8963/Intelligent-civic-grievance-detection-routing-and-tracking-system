@@ -10,6 +10,8 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
 
+include_directories("C:/Program Files/MySQL/MySQL Server 8.0/include")
+
 add_executable(CivicGrievanceGUI
     main.cpp
     mainwindow.cpp
@@ -26,9 +28,9 @@ add_executable(CivicGrievanceGUI
 target_link_libraries(CivicGrievanceGUI PRIVATE
     Qt6::Widgets
     Qt6::Sql
+    "C:/Program Files/MySQL/MySQL Server 8.0/lib/libmysql.lib"
 )
 
-# On Windows do not open a console window alongside the GUI in release
 if(WIN32)
     set_target_properties(CivicGrievanceGUI PROPERTIES WIN32_EXECUTABLE FALSE)
 endif()

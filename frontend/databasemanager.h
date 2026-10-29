@@ -1,12 +1,11 @@
 #pragma once
 
 #include <QString>
-#include <QSqlDatabase>
-#include <QSqlQuery>
-#include <QSqlError>
 #include <vector>
 #include <optional>
 #include <memory>
+#include <windows.h>
+#include <mysql.h>
 #include "user.h"
 #include "complaint.h"
 
@@ -22,7 +21,7 @@ struct ComplaintStatistics {
     std::vector<std::pair<QString, int>> departmentCounts;
 };
 
-// DatabaseManager handles all MySQL 8.0 interactions using Qt SQL and prepared statements.
+// DatabaseManager handles all MySQL 8.0 interactions natively.
 // It securely hashes passwords and enforces authorization at the database query level.
 class DatabaseManager {
 public:
@@ -38,7 +37,7 @@ public:
     QString lastError() const;
     void close();
 
-    // Secure Password Hashing & Verification (PBKDF2-HMAC-SHA256 with cryptographically random salt)
+    // Secure Password Hashing & Verification (Salted multi-iteration SHA-256)
     static QString hashPassword(const QString& plainPassword);
     static bool verifyPassword(const QString& plainPassword, const QString& storedHash);
 
@@ -82,15 +81,17 @@ public:
     // Load complaints for in-memory DSA initialization
     std::vector<Complaint> loadAllComplaintsForSystem();
 
+    // SQL String Escape helper to prevent SQL injection
+    QString escape(const QString& str) const;
+
 private:
     DatabaseManager();
     ~DatabaseManager();
     DatabaseManager(const DatabaseManager&) = delete;
     DatabaseManager& operator=(const DatabaseManager&) = delete;
 
-    QSqlDatabase db;
+    MYSQL* conn = nullptr;
     QString m_lastError;
 
-    // Helper to verify caller has access to a specific complaint's department
     bool checkDepartmentPermission(const User& caller, int complaintDepartmentId);
 };

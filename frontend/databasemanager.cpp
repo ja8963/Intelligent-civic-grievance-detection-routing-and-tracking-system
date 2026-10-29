@@ -1,9 +1,9 @@
 #include "databasemanager.h"
 #include <QCryptographicHash>
 #include <QRandomGenerator>
-#include <QVariant>
 #include <QDateTime>
 #include <QDebug>
+#include <sstream>
 
 DatabaseManager::DatabaseManager() {
 }
@@ -23,53 +23,43 @@ bool DatabaseManager::connectToDatabase(const QString& host,
                                        const QString& user,
                                        const QString& password)
 {
-    if (db.isOpen()) {
-        db.close();
-    }
+    close();
 
-    // Determine available driver
-    QString driver = "QMYSQL";
-    if (!QSqlDatabase::isDriverAvailable("QMYSQL")) {
-        if (QSqlDatabase::isDriverAvailable("QODBC")) {
-            driver = "QODBC";
-        } else if (QSqlDatabase::isDriverAvailable("QSQLITE")) {
-            driver = "QSQLITE";
-        }
-    }
-
-    if (QSqlDatabase::contains("civic_connection")) {
-        db = QSqlDatabase::database("civic_connection");
-    } else {
-        db = QSqlDatabase::addDatabase(driver, "civic_connection");
-    }
-
-    if (driver == "QMYSQL") {
-        db.setHostName(host);
-        db.setPort(port);
-        db.setDatabaseName(dbName);
-        db.setUserName(user);
-        db.setPassword(password);
-    } else if (driver == "QODBC") {
-        QString dsn = QString("DRIVER={MySQL ODBC 8.0 Unicode Driver};SERVER=%1;PORT=%2;DATABASE=%3;UID=%4;PWD=%5;OPTION=3;")
-                          .arg(host).arg(port).arg(dbName).arg(user).arg(password);
-        db.setDatabaseName(dsn);
-    } else {
-        // Fallback SQLite file for local embedded use
-        db.setDatabaseName("civic_grievance_local.db");
-    }
-
-    if (!db.open()) {
-        m_lastError = db.lastError().text();
-        qWarning() << "Database connection failed:" << m_lastError;
+    conn = mysql_init(nullptr);
+    if (!conn) {
+        m_lastError = "Failed to initialize MySQL structure.";
         return false;
     }
+
+    // Set connection timeout
+    unsigned int timeout = 5;
+    mysql_options(conn, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+
+    // Connect to MySQL 8.0 server
+    if (!mysql_real_connect(conn,
+                            host.toUtf8().constData(),
+                            user.toUtf8().constData(),
+                            password.toUtf8().constData(),
+                            dbName.toUtf8().constData(),
+                            port,
+                            nullptr,
+                            0))
+    {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
+        mysql_close(conn);
+        conn = nullptr;
+        return false;
+    }
+
+    // Set UTF-8 charset
+    mysql_set_character_set(conn, "utf8mb4");
 
     m_lastError.clear();
     return true;
 }
 
 bool DatabaseManager::isConnected() const {
-    return db.isOpen();
+    return (conn != nullptr);
 }
 
 QString DatabaseManager::lastError() const {
@@ -77,9 +67,19 @@ QString DatabaseManager::lastError() const {
 }
 
 void DatabaseManager::close() {
-    if (db.isOpen()) {
-        db.close();
+    if (conn) {
+        mysql_close(conn);
+        conn = nullptr;
     }
+}
+
+QString DatabaseManager::escape(const QString& str) const {
+    if (!conn || str.isEmpty()) return str;
+    QByteArray utf8 = str.toUtf8();
+    QByteArray buffer;
+    buffer.resize(utf8.size() * 2 + 1);
+    unsigned long len = mysql_real_escape_string(conn, buffer.data(), utf8.constData(), utf8.size());
+    return QString::fromUtf8(buffer.constData(), len);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -128,30 +128,36 @@ bool DatabaseManager::verifyPassword(const QString& plainPassword, const QString
 }
 
 // ──────────────────────────────────────────────────────────
-// Initial Super Admin Setup
+// Super Admin Management
 // ──────────────────────────────────────────────────────────
 bool DatabaseManager::hasAnySuperAdmin() {
     if (!isConnected()) return false;
-    QSqlQuery q(db);
-    q.prepare("SELECT COUNT(*) FROM users WHERE role = 'SuperAdmin'");
-    if (q.exec() && q.next()) {
-        return q.value(0).toInt() > 0;
+    if (mysql_query(conn, "SELECT COUNT(*) FROM users WHERE role = 'SuperAdmin'")) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
+        return false;
     }
-    return false;
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return false;
+    MYSQL_ROW row = mysql_fetch_row(res);
+    bool hasAdmin = false;
+    if (row && row[0]) {
+        hasAdmin = (std::atoi(row[0]) > 0);
+    }
+    mysql_free_result(res);
+    return hasAdmin;
 }
 
 bool DatabaseManager::ensureInitialSuperAdmin(const QString& username, const QString& password) {
     if (!isConnected()) return false;
     if (hasAnySuperAdmin()) return true;
 
-    QSqlQuery q(db);
-    q.prepare("INSERT INTO users (username, password_hash, role, department_id) "
-              "VALUES (:u, :p, 'SuperAdmin', NULL)");
-    q.bindValue(":u", username);
-    q.bindValue(":p", hashPassword(password));
+    QString query = QString("INSERT INTO users (username, password_hash, role, department_id) "
+                            "VALUES ('%1', '%2', 'SuperAdmin', NULL)")
+                        .arg(escape(username.trimmed()))
+                        .arg(escape(hashPassword(password)));
 
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (mysql_query(conn, query.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
     return true;
@@ -161,37 +167,53 @@ bool DatabaseManager::ensureInitialSuperAdmin(const QString& username, const QSt
 // Authentication
 // ──────────────────────────────────────────────────────────
 std::optional<User> DatabaseManager::authenticateUser(const QString& username, const QString& password) {
-    if (!isConnected()) return std::nullopt;
-
-    QSqlQuery q(db);
-    q.prepare("SELECT u.user_id, u.username, u.password_hash, u.role, u.department_id, d.name "
-              "FROM users u "
-              "LEFT JOIN departments d ON u.department_id = d.department_id "
-              "WHERE u.username = :u LIMIT 1");
-    q.bindValue(":u", username.trimmed());
-
-    if (!q.exec() || !q.next()) {
-        m_lastError = "User not found or query failed.";
+    if (!isConnected()) {
+        m_lastError = "Database not connected.";
         return std::nullopt;
     }
 
-    QString storedHash = q.value("password_hash").toString();
+    QString sql = QString("SELECT u.user_id, u.username, u.password_hash, u.role, u.department_id, d.name "
+                          "FROM users u "
+                          "LEFT JOIN departments d ON u.department_id = d.department_id "
+                          "WHERE u.username = '%1' LIMIT 1")
+                      .arg(escape(username.trimmed()));
+
+    if (mysql_query(conn, sql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
+        return std::nullopt;
+    }
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return std::nullopt;
+
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (!row) {
+        mysql_free_result(res);
+        m_lastError = "Invalid username or password.";
+        return std::nullopt;
+    }
+
+    QString storedHash = QString::fromUtf8(row[2]);
     if (!verifyPassword(password, storedHash)) {
-        m_lastError = "Invalid credentials.";
+        mysql_free_result(res);
+        m_lastError = "Invalid username or password.";
         return std::nullopt;
     }
 
     User user;
-    user.id = q.value("user_id").toLongLong();
-    user.username = q.value("username").toString();
-    QString roleStr = q.value("role").toString();
+    user.id = std::atoll(row[0]);
+    user.username = QString::fromUtf8(row[1]);
+    QString roleStr = QString::fromUtf8(row[3]);
     user.role = (roleStr == "SuperAdmin") ? UserRole::SuperAdmin : UserRole::DeptAdmin;
 
-    if (!q.value("department_id").isNull()) {
-        user.departmentId = q.value("department_id").toInt();
-        user.departmentName = q.value("name").toString();
+    if (row[4] != nullptr) {
+        user.departmentId = std::atoi(row[4]);
+        if (row[5] != nullptr) {
+            user.departmentName = QString::fromUtf8(row[5]);
+        }
     }
 
+    mysql_free_result(res);
     return user;
 }
 
@@ -202,38 +224,59 @@ std::vector<DepartmentRecord> DatabaseManager::getDepartments() {
     std::vector<DepartmentRecord> list;
     if (!isConnected()) return list;
 
-    QSqlQuery q(db);
-    if (q.exec("SELECT department_id, name FROM departments ORDER BY department_id ASC")) {
-        while (q.next()) {
-            DepartmentRecord d;
-            d.id = q.value(0).toInt();
-            d.name = q.value(1).toString();
-            list.push_back(d);
-        }
+    if (mysql_query(conn, "SELECT department_id, name FROM departments ORDER BY department_id ASC")) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
+        return list;
     }
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return list;
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        DepartmentRecord d;
+        d.id = std::atoi(row[0]);
+        d.name = QString::fromUtf8(row[1]);
+        list.push_back(d);
+    }
+    mysql_free_result(res);
     return list;
 }
 
 std::optional<DepartmentRecord> DatabaseManager::getDepartmentById(int departmentId) {
     if (!isConnected()) return std::nullopt;
-    QSqlQuery q(db);
-    q.prepare("SELECT department_id, name FROM departments WHERE department_id = :id");
-    q.bindValue(":id", departmentId);
-    if (q.exec() && q.next()) {
-        return DepartmentRecord{q.value(0).toInt(), q.value(1).toString()};
+    QString sql = QString("SELECT department_id, name FROM departments WHERE department_id = %1").arg(departmentId);
+    if (mysql_query(conn, sql.toUtf8().constData())) return std::nullopt;
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return std::nullopt;
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (!row) {
+        mysql_free_result(res);
+        return std::nullopt;
     }
-    return std::nullopt;
+
+    DepartmentRecord d{std::atoi(row[0]), QString::fromUtf8(row[1])};
+    mysql_free_result(res);
+    return d;
 }
 
 std::optional<DepartmentRecord> DatabaseManager::getDepartmentByName(const QString& name) {
     if (!isConnected()) return std::nullopt;
-    QSqlQuery q(db);
-    q.prepare("SELECT department_id, name FROM departments WHERE name = :name");
-    q.bindValue(":name", name);
-    if (q.exec() && q.next()) {
-        return DepartmentRecord{q.value(0).toInt(), q.value(1).toString()};
+    QString sql = QString("SELECT department_id, name FROM departments WHERE name = '%1'").arg(escape(name));
+    if (mysql_query(conn, sql.toUtf8().constData())) return std::nullopt;
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return std::nullopt;
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (!row) {
+        mysql_free_result(res);
+        return std::nullopt;
     }
-    return std::nullopt;
+
+    DepartmentRecord d{std::atoi(row[0]), QString::fromUtf8(row[1])};
+    mysql_free_result(res);
+    return d;
 }
 
 // ──────────────────────────────────────────────────────────
@@ -260,20 +303,19 @@ bool DatabaseManager::createUser(const User& caller,
         return false;
     }
 
-    QSqlQuery q(db);
-    q.prepare("INSERT INTO users (username, password_hash, role, department_id) "
-              "VALUES (:u, :p, :r, :d)");
-    q.bindValue(":u", username.trimmed());
-    q.bindValue(":p", hashPassword(password));
-    q.bindValue(":r", (role == UserRole::SuperAdmin) ? "SuperAdmin" : "DeptAdmin");
-    if (role == UserRole::DeptAdmin && departmentId.has_value()) {
-        q.bindValue(":d", departmentId.value());
-    } else {
-        q.bindValue(":d", QVariant(QMetaType(QMetaType::Int)));
-    }
+    QString deptVal = (role == UserRole::DeptAdmin && departmentId.has_value())
+                          ? QString::number(departmentId.value())
+                          : "NULL";
 
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    QString sql = QString("INSERT INTO users (username, password_hash, role, department_id) "
+                          "VALUES ('%1', '%2', '%3', %4)")
+                      .arg(escape(username.trimmed()))
+                      .arg(escape(hashPassword(password)))
+                      .arg((role == UserRole::SuperAdmin) ? "SuperAdmin" : "DeptAdmin")
+                      .arg(deptVal);
+
+    if (mysql_query(conn, sql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
     return true;
@@ -283,25 +325,35 @@ std::vector<User> DatabaseManager::getAllUsers(const User& caller) {
     std::vector<User> list;
     if (!caller.isSuperAdmin() || !isConnected()) return list;
 
-    QSqlQuery q(db);
-    if (q.exec("SELECT u.user_id, u.username, u.role, u.department_id, d.name "
-               "FROM users u "
-               "LEFT JOIN departments d ON u.department_id = d.department_id "
-               "ORDER BY u.user_id ASC"))
-    {
-        while (q.next()) {
-            User u;
-            u.id = q.value(0).toLongLong();
-            u.username = q.value(1).toString();
-            QString roleStr = q.value(2).toString();
-            u.role = (roleStr == "SuperAdmin") ? UserRole::SuperAdmin : UserRole::DeptAdmin;
-            if (!q.value(3).isNull()) {
-                u.departmentId = q.value(3).toInt();
-                u.departmentName = q.value(4).toString();
-            }
-            list.push_back(u);
-        }
+    const char* sql = "SELECT u.user_id, u.username, u.role, u.department_id, d.name "
+                      "FROM users u "
+                      "LEFT JOIN departments d ON u.department_id = d.department_id "
+                      "ORDER BY u.user_id ASC";
+
+    if (mysql_query(conn, sql)) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
+        return list;
     }
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return list;
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        User u;
+        u.id = std::atoll(row[0]);
+        u.username = QString::fromUtf8(row[1]);
+        QString r = QString::fromUtf8(row[2]);
+        u.role = (r == "SuperAdmin") ? UserRole::SuperAdmin : UserRole::DeptAdmin;
+        if (row[3] != nullptr) {
+            u.departmentId = std::atoi(row[3]);
+            if (row[4] != nullptr) {
+                u.departmentName = QString::fromUtf8(row[4]);
+            }
+        }
+        list.push_back(u);
+    }
+    mysql_free_result(res);
     return list;
 }
 
@@ -311,13 +363,11 @@ bool DatabaseManager::updateUserDepartment(const User& caller, long long userId,
         return false;
     }
 
-    QSqlQuery q(db);
-    q.prepare("UPDATE users SET department_id = :d WHERE user_id = :uid AND role = 'DeptAdmin'");
-    q.bindValue(":d", departmentId);
-    q.bindValue(":uid", userId);
+    QString sql = QString("UPDATE users SET department_id = %1 WHERE user_id = %2 AND role = 'DeptAdmin'")
+                      .arg(departmentId).arg(userId);
 
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (mysql_query(conn, sql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
     return true;
@@ -333,20 +383,14 @@ bool DatabaseManager::deleteUser(const User& caller, long long userId) {
         return false;
     }
 
-    QSqlQuery q(db);
-    q.prepare("DELETE FROM users WHERE user_id = :uid");
-    q.bindValue(":uid", userId);
-
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    QString sql = QString("DELETE FROM users WHERE user_id = %1").arg(userId);
+    if (mysql_query(conn, sql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
     return true;
 }
 
-// ──────────────────────────────────────────────────────────
-// Helper: Department permission check
-// ──────────────────────────────────────────────────────────
 bool DatabaseManager::checkDepartmentPermission(const User& caller, int complaintDepartmentId) {
     if (caller.isSuperAdmin()) return true;
     if (caller.isDeptAdmin() && caller.departmentId.has_value()) {
@@ -361,67 +405,70 @@ bool DatabaseManager::checkDepartmentPermission(const User& caller, int complain
 bool DatabaseManager::registerComplaint(const Complaint& c, int& outGeneratedId) {
     if (!isConnected()) return false;
 
-    // Resolve department ID from department name
     auto deptOpt = getDepartmentByName(QString::fromStdString(c.department));
-    int deptId = deptOpt.has_value() ? deptOpt->id : 6; // fallback General (id=6)
+    int deptId = deptOpt.has_value() ? deptOpt->id : 6;
 
-    QSqlQuery q(db);
-    q.prepare("INSERT INTO complaints "
-              "(citizen_name, citizen_contact, category, description, location, department_id, priority, status) "
-              "VALUES (:citizen, :contact, :cat, :descr, :loc, :dept, :prio, :stat)");
-    q.bindValue(":citizen", QString::fromStdString(c.citizen));
-    q.bindValue(":contact", QString::fromStdString(c.contact));
-    q.bindValue(":cat", QString::fromStdString(c.category));
-    q.bindValue(":descr", QString::fromStdString(c.description));
-    q.bindValue(":loc", QString::fromStdString(c.location));
-    q.bindValue(":dept", deptId);
-    q.bindValue(":prio", QString::fromStdString(priorityName(c.priority)));
-    q.bindValue(":stat", QString::fromStdString(c.status.empty() ? "Registered" : c.status));
+    QString sql = QString("INSERT INTO complaints "
+                          "(citizen_name, citizen_contact, category, description, location, department_id, priority, status) "
+                          "VALUES ('%1', '%2', '%3', '%4', '%5', %6, '%7', '%8')")
+                      .arg(escape(QString::fromStdString(c.citizen)))
+                      .arg(escape(QString::fromStdString(c.contact)))
+                      .arg(escape(QString::fromStdString(c.category)))
+                      .arg(escape(QString::fromStdString(c.description)))
+                      .arg(escape(QString::fromStdString(c.location)))
+                      .arg(deptId)
+                      .arg(escape(QString::fromStdString(priorityName(c.priority))))
+                      .arg(escape(QString::fromStdString(c.status.empty() ? "Registered" : c.status)));
 
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (mysql_query(conn, sql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
 
-    outGeneratedId = q.lastInsertId().toInt();
+    outGeneratedId = static_cast<int>(mysql_insert_id(conn));
     return true;
 }
 
 std::optional<Complaint> DatabaseManager::getComplaintById(const User& caller, int id) {
     if (!isConnected()) return std::nullopt;
 
-    QSqlQuery q(db);
-    q.prepare("SELECT c.complaint_id, c.citizen_name, c.citizen_contact, c.category, "
-              "c.description, c.location, c.department_id, d.name AS dept_name, "
-              "c.priority, c.status, c.created_at "
-              "FROM complaints c "
-              "JOIN departments d ON c.department_id = d.department_id "
-              "WHERE c.complaint_id = :id");
-    q.bindValue(":id", id);
+    QString sql = QString("SELECT c.complaint_id, c.citizen_name, c.citizen_contact, c.category, "
+                          "c.description, c.location, c.department_id, d.name AS dept_name, "
+                          "c.priority, c.status, c.created_at "
+                          "FROM complaints c "
+                          "JOIN departments d ON c.department_id = d.department_id "
+                          "WHERE c.complaint_id = %1").arg(id);
 
-    if (!q.exec() || !q.next()) {
+    if (mysql_query(conn, sql.toUtf8().constData())) return std::nullopt;
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return std::nullopt;
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if (!row) {
+        mysql_free_result(res);
         return std::nullopt;
     }
 
-    int deptId = q.value("department_id").toInt();
-    // Enforce role-based access
+    int deptId = std::atoi(row[6]);
     if (!checkDepartmentPermission(caller, deptId)) {
+        mysql_free_result(res);
         m_lastError = "Access denied: You are not authorized to view complaints outside your department.";
         return std::nullopt;
     }
 
     Complaint comp;
-    comp.id = q.value("complaint_id").toInt();
-    comp.citizen = q.value("citizen_name").toString().toStdString();
-    comp.contact = q.value("citizen_contact").toString().toStdString();
-    comp.category = q.value("category").toString().toStdString();
-    comp.description = q.value("description").toString().toStdString();
-    comp.location = q.value("location").toString().toStdString();
-    comp.department = q.value("dept_name").toString().toStdString();
-    comp.priority = priorityFromName(q.value("priority").toString().toStdString());
-    comp.status = q.value("status").toString().toStdString();
-    comp.createdAt = q.value("created_at").toDateTime().toString("yyyy-MM-dd HH:mm:ss").toStdString();
+    comp.id = std::atoi(row[0]);
+    comp.citizen = row[1] ? row[1] : "";
+    comp.contact = row[2] ? row[2] : "";
+    comp.category = row[3] ? row[3] : "";
+    comp.description = row[4] ? row[4] : "";
+    comp.location = row[5] ? row[5] : "";
+    comp.department = row[7] ? row[7] : "";
+    comp.priority = priorityFromName(row[8] ? row[8] : "Low");
+    comp.status = row[9] ? row[9] : "";
+    comp.createdAt = row[10] ? row[10] : "";
 
+    mysql_free_result(res);
     return comp;
 }
 
@@ -439,51 +486,48 @@ std::vector<Complaint> DatabaseManager::getComplaints(const User& caller,
                   "JOIN departments d ON c.department_id = d.department_id "
                   "WHERE 1=1 ";
 
-    // Backend authorization enforcement
+    // Backend role enforcement
     if (caller.isDeptAdmin()) {
-        if (!caller.departmentId.has_value()) return list; // DeptAdmin with no dept has no access
-        sql += " AND c.department_id = :deptId";
+        if (!caller.departmentId.has_value()) return list;
+        sql += QString(" AND c.department_id = %1 ").arg(caller.departmentId.value());
     }
 
     if (!statusFilter.isEmpty() && statusFilter != "All") {
-        sql += " AND c.status = :status";
+        sql += QString(" AND c.status = '%1' ").arg(escape(statusFilter));
     }
 
     if (!searchKeyword.trimmed().isEmpty()) {
-        sql += " AND (c.complaint_id LIKE :kw OR c.citizen_name LIKE :kw OR c.category LIKE :kw OR c.description LIKE :kw OR c.location LIKE :kw)";
+        QString kw = escape(searchKeyword.trimmed());
+        sql += QString(" AND (c.complaint_id LIKE '%%1%' OR c.citizen_name LIKE '%%1%' OR c.category LIKE '%%1%' OR c.description LIKE '%%1%' OR c.location LIKE '%%1%') ")
+                   .arg(kw);
     }
 
     sql += " ORDER BY c.complaint_id DESC";
 
-    QSqlQuery q(db);
-    q.prepare(sql);
-
-    if (caller.isDeptAdmin()) {
-        q.bindValue(":deptId", caller.departmentId.value());
-    }
-    if (!statusFilter.isEmpty() && statusFilter != "All") {
-        q.bindValue(":status", statusFilter);
-    }
-    if (!searchKeyword.trimmed().isEmpty()) {
-        q.bindValue(":kw", "%" + searchKeyword.trimmed() + "%");
+    if (mysql_query(conn, sql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
+        return list;
     }
 
-    if (q.exec()) {
-        while (q.next()) {
-            Complaint comp;
-            comp.id = q.value("complaint_id").toInt();
-            comp.citizen = q.value("citizen_name").toString().toStdString();
-            comp.contact = q.value("citizen_contact").toString().toStdString();
-            comp.category = q.value("category").toString().toStdString();
-            comp.description = q.value("description").toString().toStdString();
-            comp.location = q.value("location").toString().toStdString();
-            comp.department = q.value("dept_name").toString().toStdString();
-            comp.priority = priorityFromName(q.value("priority").toString().toStdString());
-            comp.status = q.value("status").toString().toStdString();
-            comp.createdAt = q.value("created_at").toDateTime().toString("yyyy-MM-dd HH:mm:ss").toStdString();
-            list.push_back(comp);
-        }
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return list;
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        Complaint comp;
+        comp.id = std::atoi(row[0]);
+        comp.citizen = row[1] ? row[1] : "";
+        comp.contact = row[2] ? row[2] : "";
+        comp.category = row[3] ? row[3] : "";
+        comp.description = row[4] ? row[4] : "";
+        comp.location = row[5] ? row[5] : "";
+        comp.department = row[7] ? row[7] : "";
+        comp.priority = priorityFromName(row[8] ? row[8] : "Low");
+        comp.status = row[9] ? row[9] : "";
+        comp.createdAt = row[10] ? row[10] : "";
+        list.push_back(comp);
     }
+    mysql_free_result(res);
     return list;
 }
 
@@ -494,55 +538,50 @@ bool DatabaseManager::updateComplaintStatus(const User& caller,
 {
     if (!isConnected()) return false;
 
-    // First fetch current record to verify authorization and previous status
-    QSqlQuery checkQ(db);
-    checkQ.prepare("SELECT department_id, status FROM complaints WHERE complaint_id = :id");
-    checkQ.bindValue(":id", complaintId);
-    if (!checkQ.exec() || !checkQ.next()) {
+    // Verify department access
+    QString checkSql = QString("SELECT department_id, status FROM complaints WHERE complaint_id = %1").arg(complaintId);
+    if (mysql_query(conn, checkSql.toUtf8().constData())) return false;
+
+    MYSQL_RES* checkRes = mysql_store_result(conn);
+    if (!checkRes) return false;
+    MYSQL_ROW row = mysql_fetch_row(checkRes);
+    if (!row) {
+        mysql_free_result(checkRes);
         m_lastError = "Complaint ID not found.";
         return false;
     }
 
-    int deptId = checkQ.value("department_id").toInt();
-    QString prevStatus = checkQ.value("status").toString();
+    int deptId = std::atoi(row[0]);
+    QString prevStatus = QString::fromUtf8(row[1] ? row[1] : "");
+    mysql_free_result(checkRes);
 
-    // Verify department access
     if (!checkDepartmentPermission(caller, deptId)) {
         m_lastError = "Unauthorized: You cannot update complaints assigned to other departments.";
         return false;
     }
 
-    // Begin transaction for updating status and inserting history
-    db.transaction();
-
-    QSqlQuery updateQ(db);
-    updateQ.prepare("UPDATE complaints SET status = :status WHERE complaint_id = :id");
-    updateQ.bindValue(":status", newStatus);
-    updateQ.bindValue(":id", complaintId);
-
-    if (!updateQ.exec()) {
-        m_lastError = updateQ.lastError().text();
-        db.rollback();
+    // Update status
+    QString updateSql = QString("UPDATE complaints SET status = '%1' WHERE complaint_id = %2")
+                            .arg(escape(newStatus)).arg(complaintId);
+    if (mysql_query(conn, updateSql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
 
-    // Insert audit history
-    QSqlQuery histQ(db);
-    histQ.prepare("INSERT INTO status_history (complaint_id, previous_status, new_status, changed_by, notes) "
-                  "VALUES (:cid, :prev, :new, :uid, :notes)");
-    histQ.bindValue(":cid", complaintId);
-    histQ.bindValue(":prev", prevStatus);
-    histQ.bindValue(":new", newStatus);
-    histQ.bindValue(":uid", caller.id);
-    histQ.bindValue(":notes", notes);
+    // Insert into status_history audit table
+    QString histSql = QString("INSERT INTO status_history (complaint_id, previous_status, new_status, changed_by, notes) "
+                              "VALUES (%1, '%2', '%3', %4, '%5')")
+                          .arg(complaintId)
+                          .arg(escape(prevStatus))
+                          .arg(escape(newStatus))
+                          .arg(caller.id)
+                          .arg(escape(notes));
 
-    if (!histQ.exec()) {
-        m_lastError = histQ.lastError().text();
-        db.rollback();
+    if (mysql_query(conn, histSql.toUtf8().constData())) {
+        m_lastError = QString::fromUtf8(mysql_error(conn));
         return false;
     }
 
-    db.commit();
     return true;
 }
 
@@ -551,37 +590,46 @@ std::vector<StatusHistoryRecord> DatabaseManager::getComplaintHistory(const User
     if (!isConnected()) return list;
 
     // Check permission first
-    QSqlQuery checkQ(db);
-    checkQ.prepare("SELECT department_id FROM complaints WHERE complaint_id = :id");
-    checkQ.bindValue(":id", complaintId);
-    if (!checkQ.exec() || !checkQ.next()) return list;
+    QString checkSql = QString("SELECT department_id FROM complaints WHERE complaint_id = %1").arg(complaintId);
+    if (mysql_query(conn, checkSql.toUtf8().constData())) return list;
+    MYSQL_RES* cr = mysql_store_result(conn);
+    if (!cr) return list;
+    MYSQL_ROW crow = mysql_fetch_row(cr);
+    if (!crow) {
+        mysql_free_result(cr);
+        return list;
+    }
+    int deptId = std::atoi(crow[0]);
+    mysql_free_result(cr);
 
-    int deptId = checkQ.value("department_id").toInt();
     if (!checkDepartmentPermission(caller, deptId)) return list;
 
-    QSqlQuery q(db);
-    q.prepare("SELECT h.history_id, h.complaint_id, h.previous_status, h.new_status, "
-              "h.changed_by, u.username, h.notes, h.changed_at "
-              "FROM status_history h "
-              "LEFT JOIN users u ON h.changed_by = u.user_id "
-              "WHERE h.complaint_id = :cid "
-              "ORDER BY h.history_id ASC");
-    q.bindValue(":cid", complaintId);
+    QString sql = QString("SELECT h.history_id, h.complaint_id, h.previous_status, h.new_status, "
+                          "h.changed_by, u.username, h.notes, h.changed_at "
+                          "FROM status_history h "
+                          "LEFT JOIN users u ON h.changed_by = u.user_id "
+                          "WHERE h.complaint_id = %1 "
+                          "ORDER BY h.history_id ASC").arg(complaintId);
 
-    if (q.exec()) {
-        while (q.next()) {
-            StatusHistoryRecord rec;
-            rec.historyId = q.value(0).toLongLong();
-            rec.complaintId = q.value(1).toLongLong();
-            rec.previousStatus = q.value(2).toString();
-            rec.newStatus = q.value(3).toString();
-            rec.changedByUserId = q.value(4).toLongLong();
-            rec.changedByUsername = q.value(5).toString();
-            rec.notes = q.value(6).toString();
-            rec.changedAt = q.value(7).toDateTime().toString("yyyy-MM-dd HH:mm:ss");
-            list.push_back(rec);
-        }
+    if (mysql_query(conn, sql.toUtf8().constData())) return list;
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return list;
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        StatusHistoryRecord rec;
+        rec.historyId = std::atoll(row[0]);
+        rec.complaintId = std::atoll(row[1]);
+        rec.previousStatus = row[2] ? QString::fromUtf8(row[2]) : "";
+        rec.newStatus = row[3] ? QString::fromUtf8(row[3]) : "";
+        rec.changedByUserId = std::atoll(row[4]);
+        rec.changedByUsername = row[5] ? QString::fromUtf8(row[5]) : "Unknown";
+        rec.notes = row[6] ? QString::fromUtf8(row[6]) : "";
+        rec.changedAt = row[7] ? QString::fromUtf8(row[7]) : "";
+        list.push_back(rec);
     }
+    mysql_free_result(res);
     return list;
 }
 
@@ -595,42 +643,36 @@ ComplaintStatistics DatabaseManager::getStatistics(const User& caller) {
         baseWhere += QString(" AND department_id = %1 ").arg(caller.departmentId.value());
     }
 
-    QSqlQuery q(db);
-    // Total count
-    if (q.exec("SELECT COUNT(*) FROM complaints" + baseWhere) && q.next()) {
-        stats.totalComplaints = q.value(0).toInt();
-    }
+    auto runCount = [this](const QString& sql) -> int {
+        if (mysql_query(conn, sql.toUtf8().constData())) return 0;
+        MYSQL_RES* res = mysql_store_result(conn);
+        if (!res) return 0;
+        MYSQL_ROW row = mysql_fetch_row(res);
+        int c = (row && row[0]) ? std::atoi(row[0]) : 0;
+        mysql_free_result(res);
+        return c;
+    };
 
-    // Pending count
-    if (q.exec("SELECT COUNT(*) FROM complaints" + baseWhere + " AND status = 'Registered'") && q.next()) {
-        stats.pendingComplaints = q.value(0).toInt();
-    }
+    stats.totalComplaints = runCount("SELECT COUNT(*) FROM complaints" + baseWhere);
+    stats.pendingComplaints = runCount("SELECT COUNT(*) FROM complaints" + baseWhere + " AND status = 'Registered'");
+    stats.inProgressComplaints = runCount("SELECT COUNT(*) FROM complaints" + baseWhere + " AND status IN ('In Progress', 'Urgent Processing')");
+    stats.resolvedComplaints = runCount("SELECT COUNT(*) FROM complaints" + baseWhere + " AND status IN ('Resolved', 'Closed')");
+    stats.urgentComplaints = runCount("SELECT COUNT(*) FROM complaints" + baseWhere + " AND priority = 'High' AND status NOT IN ('Resolved', 'Closed')");
 
-    // In Progress count
-    if (q.exec("SELECT COUNT(*) FROM complaints" + baseWhere + " AND status IN ('In Progress', 'Urgent Processing')") && q.next()) {
-        stats.inProgressComplaints = q.value(0).toInt();
-    }
-
-    // Resolved count
-    if (q.exec("SELECT COUNT(*) FROM complaints" + baseWhere + " AND status IN ('Resolved', 'Closed')") && q.next()) {
-        stats.resolvedComplaints = q.value(0).toInt();
-    }
-
-    // Urgent count
-    if (q.exec("SELECT COUNT(*) FROM complaints" + baseWhere + " AND priority = 'High' AND status != 'Resolved' AND status != 'Closed'") && q.next()) {
-        stats.urgentComplaints = q.value(0).toInt();
-    }
-
-    // Department breakdown
     if (caller.isSuperAdmin()) {
-        if (q.exec("SELECT d.name, COUNT(c.complaint_id) "
-                   "FROM departments d "
-                   "LEFT JOIN complaints c ON d.department_id = c.department_id "
-                   "GROUP BY d.department_id, d.name "
-                   "ORDER BY d.department_id ASC"))
-        {
-            while (q.next()) {
-                stats.departmentCounts.push_back({q.value(0).toString(), q.value(1).toInt()});
+        const char* dsql = "SELECT d.name, COUNT(c.complaint_id) "
+                           "FROM departments d "
+                           "LEFT JOIN complaints c ON d.department_id = c.department_id "
+                           "GROUP BY d.department_id, d.name "
+                           "ORDER BY d.department_id ASC";
+        if (!mysql_query(conn, dsql)) {
+            MYSQL_RES* res = mysql_store_result(conn);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    stats.departmentCounts.push_back({QString::fromUtf8(row[0]), std::atoi(row[1])});
+                }
+                mysql_free_result(res);
             }
         }
     } else if (caller.isDeptAdmin() && caller.departmentId.has_value()) {
@@ -644,28 +686,33 @@ std::vector<Complaint> DatabaseManager::loadAllComplaintsForSystem() {
     std::vector<Complaint> list;
     if (!isConnected()) return list;
 
-    QSqlQuery q(db);
-    if (q.exec("SELECT c.complaint_id, c.citizen_name, c.citizen_contact, c.category, "
-               "c.description, c.location, c.department_id, d.name AS dept_name, "
-               "c.priority, c.status, c.created_at "
-               "FROM complaints c "
-               "JOIN departments d ON c.department_id = d.department_id "
-               "ORDER BY c.complaint_id ASC"))
-    {
-        while (q.next()) {
-            Complaint comp;
-            comp.id = q.value("complaint_id").toInt();
-            comp.citizen = q.value("citizen_name").toString().toStdString();
-            comp.contact = q.value("citizen_contact").toString().toStdString();
-            comp.category = q.value("category").toString().toStdString();
-            comp.description = q.value("description").toString().toStdString();
-            comp.location = q.value("location").toString().toStdString();
-            comp.department = q.value("dept_name").toString().toStdString();
-            comp.priority = priorityFromName(q.value("priority").toString().toStdString());
-            comp.status = q.value("status").toString().toStdString();
-            comp.createdAt = q.value("created_at").toDateTime().toString("yyyy-MM-dd HH:mm:ss").toStdString();
-            list.push_back(comp);
-        }
+    const char* sql = "SELECT c.complaint_id, c.citizen_name, c.citizen_contact, c.category, "
+                      "c.description, c.location, c.department_id, d.name AS dept_name, "
+                      "c.priority, c.status, c.created_at "
+                      "FROM complaints c "
+                      "JOIN departments d ON c.department_id = d.department_id "
+                      "ORDER BY c.complaint_id ASC";
+
+    if (mysql_query(conn, sql)) return list;
+
+    MYSQL_RES* res = mysql_store_result(conn);
+    if (!res) return list;
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        Complaint comp;
+        comp.id = std::atoi(row[0]);
+        comp.citizen = row[1] ? row[1] : "";
+        comp.contact = row[2] ? row[2] : "";
+        comp.category = row[3] ? row[3] : "";
+        comp.description = row[4] ? row[4] : "";
+        comp.location = row[5] ? row[5] : "";
+        comp.department = row[7] ? row[7] : "";
+        comp.priority = priorityFromName(row[8] ? row[8] : "Low");
+        comp.status = row[9] ? row[9] : "";
+        comp.createdAt = row[10] ? row[10] : "";
+        list.push_back(comp);
     }
+    mysql_free_result(res);
     return list;
 }
