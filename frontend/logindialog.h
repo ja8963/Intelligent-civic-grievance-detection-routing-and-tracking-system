@@ -17,6 +17,7 @@ public:
 
 private slots:
     void onLoginClicked();
+    void onCitizenAccessClicked();
     void onDbSettingsClicked();
     void onSetupAdminClicked();
 
@@ -24,6 +25,7 @@ private:
     QLineEdit*   usernameEdit;
     QLineEdit*   passwordEdit;
     QPushButton* loginBtn;
+    QPushButton* citizenBtn;
     QPushButton* dbSettingsBtn;
     QPushButton* setupAdminBtn;
     QLabel*      errorLabel;

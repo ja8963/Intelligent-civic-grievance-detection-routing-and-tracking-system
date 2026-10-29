@@ -148,9 +148,14 @@ LoginDialog::LoginDialog(QWidget* parent)
     errorLabel->setAlignment(Qt::AlignCenter);
     cardLay->addWidget(errorLabel);
 
-    loginBtn = new QPushButton("Log In", card);
+    loginBtn = new QPushButton("Admin Log In", card);
     loginBtn->setObjectName("loginBtn");
     cardLay->addWidget(loginBtn);
+
+    citizenBtn = new QPushButton("👤 File Grievance as Citizen (No Login Required)", card);
+    citizenBtn->setStyleSheet("background-color: #38a169; color: white; border: none; border-radius: 6px; padding: 10px; font-size: 13px; font-weight: bold; min-height: 38px;");
+    citizenBtn->setCursor(Qt::PointingHandCursor);
+    cardLay->addWidget(citizenBtn);
 
     QHBoxLayout* btnRow = new QHBoxLayout();
     dbSettingsBtn = new QPushButton("⚙️ Database Connection", card);
@@ -166,6 +171,7 @@ LoginDialog::LoginDialog(QWidget* parent)
     outerLay->addWidget(card);
 
     connect(loginBtn, &QPushButton::clicked, this, &LoginDialog::onLoginClicked);
+    connect(citizenBtn, &QPushButton::clicked, this, &LoginDialog::onCitizenAccessClicked);
     connect(passwordEdit, &QLineEdit::returnPressed, this, &LoginDialog::onLoginClicked);
     connect(dbSettingsBtn, &QPushButton::clicked, this, &LoginDialog::onDbSettingsClicked);
     connect(setupAdminBtn, &QPushButton::clicked, this, &LoginDialog::onSetupAdminClicked);
@@ -201,6 +207,15 @@ void LoginDialog::updateDbStatus() {
             setupAdminBtn->setVisible(false);
         }
     }
+}
+
+void LoginDialog::onCitizenAccessClicked() {
+    authenticatedUser.id = 0;
+    authenticatedUser.username = "Citizen";
+    authenticatedUser.role = UserRole::Citizen;
+    authenticatedUser.departmentId = std::nullopt;
+    authenticatedUser.departmentName = "Public Citizen";
+    accept();
 }
 
 void LoginDialog::onLoginClicked() {

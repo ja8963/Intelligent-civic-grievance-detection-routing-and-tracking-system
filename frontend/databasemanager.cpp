@@ -392,7 +392,7 @@ bool DatabaseManager::deleteUser(const User& caller, long long userId) {
 }
 
 bool DatabaseManager::checkDepartmentPermission(const User& caller, int complaintDepartmentId) {
-    if (caller.isSuperAdmin()) return true;
+    if (caller.isSuperAdmin() || caller.isCitizen()) return true;
     if (caller.isDeptAdmin() && caller.departmentId.has_value()) {
         return (caller.departmentId.value() == complaintDepartmentId);
     }
@@ -537,6 +537,11 @@ bool DatabaseManager::updateComplaintStatus(const User& caller,
                                             const QString& notes)
 {
     if (!isConnected()) return false;
+
+    if (caller.isCitizen()) {
+        m_lastError = "Access denied: Citizens are not authorized to update grievance statuses.";
+        return false;
+    }
 
     // Verify department access
     QString checkSql = QString("SELECT department_id, status FROM complaints WHERE complaint_id = %1").arg(complaintId);

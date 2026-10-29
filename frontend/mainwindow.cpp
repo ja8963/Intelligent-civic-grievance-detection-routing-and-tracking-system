@@ -196,8 +196,12 @@ MainWindow::MainWindow(const User& user, QWidget* parent)
     // Populate in-memory DSA from database
     syncInMemoryWithDatabase();
 
-    // Show initial dashboard
-    showDashboard();
+    // Show initial page: Citizens go straight to Register Complaint, Admins go to Dashboard
+    if (currentUser.isCitizen()) {
+        showRegisterPage();
+    } else {
+        showDashboard();
+    }
 }
 
 void MainWindow::syncInMemoryWithDatabase() {
@@ -217,8 +221,9 @@ QWidget* MainWindow::createNavBar() {
     title->setObjectName("appTitle");
     lay->addWidget(title);
 
-    QString deptStr = currentUser.isSuperAdmin() ? "All Departments" : currentUser.departmentName;
-    QLabel* info = new QLabel(QString("User: %1\nRole: %2\nDept: %3")
+    QString deptStr = currentUser.isSuperAdmin() ? "All Departments" 
+                    : (currentUser.isCitizen() ? "Public Citizen Portal" : currentUser.departmentName);
+    QLabel* info = new QLabel(QString("User: %1\nRole: %2\nScope: %3")
                                   .arg(currentUser.username, currentUser.roleName(), deptStr), sidebar);
     info->setObjectName("userInfo");
     info->setWordWrap(true);
@@ -228,7 +233,7 @@ QWidget* MainWindow::createNavBar() {
     navDashBtn    = new QPushButton("📊  Dashboard", sidebar);
     navRegBtn     = new QPushButton("➕  Register Complaint", sidebar);
     navViewBtn    = new QPushButton(currentUser.isSuperAdmin() ? "📋  All Complaints" : "📋  Dept Complaints", sidebar);
-    navSearchBtn  = new QPushButton("🔍  Search by ID", sidebar);
+    navSearchBtn  = new QPushButton("🔍  Track by ID", sidebar);
     navUpdateBtn  = new QPushButton("🔄  Update Status", sidebar);
     navProcessBtn = new QPushButton("⚙️  Process Queue", sidebar);
     navUsersBtn   = new QPushButton("👥  Manage Admins", sidebar);
@@ -239,8 +244,14 @@ QWidget* MainWindow::createNavBar() {
         lay->addWidget(b);
     }
 
-    // Role-based visibility
-    if (!currentUser.isSuperAdmin()) {
+    // Role-based visibility: Citizens only see Register and Track by ID
+    if (currentUser.isCitizen()) {
+        navDashBtn->setVisible(false);
+        navViewBtn->setVisible(false);
+        navUpdateBtn->setVisible(false);
+        navProcessBtn->setVisible(false);
+        navUsersBtn->setVisible(false);
+    } else if (!currentUser.isSuperAdmin()) {
         navUsersBtn->setVisible(false); // Only Super Admin can access user management
     }
 

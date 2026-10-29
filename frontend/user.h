@@ -6,7 +6,8 @@
 // Role-based access control roles
 enum class UserRole {
     SuperAdmin,
-    DeptAdmin
+    DeptAdmin,
+    Citizen
 };
 
 // Represents an authenticated user in the system
@@ -14,14 +15,17 @@ struct User {
     long long id = 0;
     QString username;
     UserRole role = UserRole::DeptAdmin;
-    std::optional<int> departmentId; // NULL for SuperAdmin, set for DeptAdmin
+    std::optional<int> departmentId; // NULL for SuperAdmin & Citizen, set for DeptAdmin
     QString departmentName;          // Human-readable department name
 
     bool isSuperAdmin() const { return role == UserRole::SuperAdmin; }
     bool isDeptAdmin() const { return role == UserRole::DeptAdmin; }
+    bool isCitizen() const { return role == UserRole::Citizen; }
 
     QString roleName() const {
-        return isSuperAdmin() ? "Super Admin" : "Department Admin";
+        if (isSuperAdmin()) return "Super Admin";
+        if (isDeptAdmin()) return "Department Admin";
+        return "Citizen (Public)";
     }
 };
 
