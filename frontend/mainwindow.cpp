@@ -17,11 +17,22 @@
 static const char* APP_STYLE = R"(
 QMainWindow {
     background-color: #f7fafc;
+    color: #1a202c;
+}
+QWidget {
+    color: #1a202c;
+}
+QLabel {
+    color: #1a202c;
+    font-size: 13px;
 }
 QWidget#sidebar {
     background-color: #1a202c;
     min-width: 220px;
     max-width: 220px;
+}
+QWidget#sidebar QLabel {
+    color: #ffffff;
 }
 QLabel#appTitle {
     color: #ffffff;
@@ -30,7 +41,7 @@ QLabel#appTitle {
     padding: 16px 12px 4px 12px;
 }
 QLabel#userInfo {
-    color: #a0aec0;
+    color: #cbd5e0;
     font-size: 11px;
     padding: 0px 12px 16px 12px;
     border-bottom: 1px solid #2d3748;
@@ -58,34 +69,41 @@ QPushButton.navBtnActive {
 QLabel#pageHeader {
     font-size: 20px;
     font-weight: bold;
-    color: #2d3748;
+    color: #1a202c;
     margin-bottom: 8px;
 }
 QFrame.card {
     background-color: #ffffff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #cbd5e0;
     border-radius: 8px;
     padding: 16px;
 }
 QLabel.cardTitle {
     font-size: 13px;
     font-weight: 600;
-    color: #718096;
+    color: #4a5568;
 }
 QLabel.cardNumber {
     font-size: 28px;
     font-weight: bold;
 }
 QLineEdit, QTextEdit, QComboBox {
-    border: 1px solid #cbd5e0;
+    border: 1px solid #a0aec0;
     border-radius: 6px;
     padding: 8px;
     background-color: #ffffff;
     font-size: 13px;
-    color: #2d3748;
+    color: #1a202c;
 }
 QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
     border: 2px solid #3182ce;
+    color: #1a202c;
+}
+QComboBox QAbstractItemView {
+    color: #1a202c;
+    background-color: #ffffff;
+    selection-background-color: #ebf8ff;
+    selection-color: #2b6cb0;
 }
 QPushButton.primaryBtn {
     background-color: #3182ce;
@@ -112,12 +130,15 @@ QPushButton.urgentBtn:hover { background-color: #c53030; }
 
 QTableWidget {
     background-color: #ffffff;
-    border: 1px solid #e2e8f0;
+    color: #1a202c;
+    border: 1px solid #cbd5e0;
     border-radius: 6px;
-    gridline-color: #edf2f7;
+    gridline-color: #e2e8f0;
     font-size: 12px;
 }
 QTableWidget::item {
+    color: #1a202c;
+    background-color: #ffffff;
     padding: 6px;
 }
 QTableWidget::item:selected {
@@ -126,7 +147,7 @@ QTableWidget::item:selected {
 }
 QHeaderView::section {
     background-color: #edf2f7;
-    color: #4a5568;
+    color: #1a202c;
     font-weight: bold;
     font-size: 12px;
     border: none;
