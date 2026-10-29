@@ -1,254 +1,335 @@
 #include "logindialog.h"
+#include "databasemanager.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
 #include <QMessageBox>
-#include <QPixmap>
 #include <QApplication>
+#include <QDialogButtonBox>
+#include <QSpinBox>
+#include <QSettings>
 
-// ── Stylesheet just for the login dialog ──────────────────
 static const char* LOGIN_STYLE = R"(
 QDialog {
-    background-color: #f0f4f8;
+    background-color: #f4f6f9;
 }
 QLabel#titleLabel {
     font-size: 22px;
     font-weight: bold;
-    color: #1565C0;
+    color: #1a365d;
 }
 QLabel#subtitleLabel {
     font-size: 13px;
-    color: #555;
+    color: #4a5568;
 }
 QLabel#fieldLabel {
     font-size: 13px;
-    color: #333;
-    font-weight: bold;
+    color: #2d3748;
+    font-weight: 600;
 }
-QLineEdit, QComboBox {
-    border: 1px solid #bdbdbd;
-    border-radius: 5px;
-    padding: 8px;
+QLineEdit {
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    padding: 8px 12px;
     font-size: 13px;
-    background: white;
-    color: #111111;
-    min-height: 20px;
+    background: #ffffff;
+    color: #1a202c;
+    min-height: 22px;
 }
-QLineEdit:focus, QComboBox:focus {
-    border: 2px solid #1976D2;
-    color: #111111;
+QLineEdit:focus {
+    border: 2px solid #3182ce;
 }
-QComboBox QAbstractItemView { color: #111111; background: white; }
 QPushButton#loginBtn {
-    background-color: #1565C0;
+    background-color: #2b6cb0;
     color: white;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     padding: 10px;
     font-size: 14px;
     font-weight: bold;
-    min-height: 40px;
+    min-height: 38px;
 }
-QPushButton#loginBtn:hover   { background-color: #1976D2; }
-QPushButton#loginBtn:pressed { background-color: #0D47A1; }
-QLabel#errorLabel {
-    color: #c62828;
-    font-size: 12px;
-}
-QLabel#hintLabel {
-    color: #1565C0;
-    font-size: 11px;
-    background: #e3f2fd;
-    border-radius: 4px;
+QPushButton#loginBtn:hover   { background-color: #3182ce; }
+QPushButton#loginBtn:pressed { background-color: #2c5282; }
+
+QPushButton.secondaryBtn {
+    background-color: transparent;
+    color: #2b6cb0;
+    border: 1px solid #2b6cb0;
+    border-radius: 5px;
     padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton.secondaryBtn:hover {
+    background-color: #ebf8ff;
+}
+
+QLabel#errorLabel {
+    color: #e53e3e;
+    font-size: 12px;
+    font-weight: bold;
+}
+QLabel#statusLabel {
+    color: #2b6cb0;
+    font-size: 12px;
+    background: #ebf8ff;
+    border-radius: 6px;
+    padding: 8px 12px;
+    border: 1px solid #bee3f8;
 }
 QFrame#card {
-    background: white;
+    background: #ffffff;
     border-radius: 12px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid #e2e8f0;
 }
 )";
 
-// ─────────────────────────────────────────────────────────
-// Constructor  –  build the login UI
-// ─────────────────────────────────────────────────────────
 LoginDialog::LoginDialog(QWidget* parent)
-    : QDialog(parent), loggedInRole(UserRole::Citizen)
+    : QDialog(parent)
 {
     setStyleSheet(LOGIN_STYLE);
-    setWindowTitle("Civic Grievance System — Login");
-    setFixedSize(420, 540);
-    // Remove the ? help button from the title bar
+    setWindowTitle("Civic Grievance System — Portal Login");
+    setFixedSize(440, 560);
     setWindowFlags(Qt::Dialog | Qt::WindowCloseButtonHint);
 
-    // ── Outer layout ──────────────────────────────────────
     QVBoxLayout* outerLay = new QVBoxLayout(this);
-    outerLay->setContentsMargins(30, 24, 30, 24);
+    outerLay->setContentsMargins(32, 24, 32, 24);
     outerLay->setSpacing(0);
 
-    // ── Top banner: icon + title ──────────────────────────
-    QLabel* iconLabel = new QLabel("🏛", this);
-    iconLabel->setStyleSheet("font-size: 48px;");
+    QLabel* iconLabel = new QLabel("🏛️", this);
+    iconLabel->setStyleSheet("font-size: 44px;");
     iconLabel->setAlignment(Qt::AlignCenter);
     outerLay->addWidget(iconLabel);
 
-    QLabel* titleLabel = new QLabel("Civic Grievance System", this);
+    QLabel* titleLabel = new QLabel("Intelligent Civic Grievance", this);
     titleLabel->setObjectName("titleLabel");
     titleLabel->setAlignment(Qt::AlignCenter);
     outerLay->addWidget(titleLabel);
 
-    QLabel* subtitleLabel = new QLabel("Please log in to continue", this);
+    QLabel* subtitleLabel = new QLabel("Administrative Access & Tracking Portal", this);
     subtitleLabel->setObjectName("subtitleLabel");
     subtitleLabel->setAlignment(Qt::AlignCenter);
     outerLay->addWidget(subtitleLabel);
 
-    outerLay->addSpacing(20);
+    outerLay->addSpacing(16);
 
-    // ── White card containing the form ───────────────────
     QFrame* card = new QFrame(this);
     card->setObjectName("card");
     QVBoxLayout* cardLay = new QVBoxLayout(card);
     cardLay->setContentsMargins(24, 20, 24, 20);
-    cardLay->setSpacing(14);
+    cardLay->setSpacing(12);
 
-    // Role selector
-    QLabel* roleLbl = new QLabel("Login As", card);
-    roleLbl->setObjectName("fieldLabel");
-    cardLay->addWidget(roleLbl);
+    statusLabel = new QLabel("", card);
+    statusLabel->setObjectName("statusLabel");
+    statusLabel->setWordWrap(true);
+    cardLay->addWidget(statusLabel);
 
-    roleCombo = new QComboBox(card);
-    roleCombo->addItem("👤  Citizen");
-    roleCombo->addItem("🛠️  Admin");
-    roleCombo->addItem("⭐  Super Admin");
-    cardLay->addWidget(roleCombo);
-
-    // Username
     QLabel* userLbl = new QLabel("Username", card);
     userLbl->setObjectName("fieldLabel");
     cardLay->addWidget(userLbl);
 
     usernameEdit = new QLineEdit(card);
-    usernameEdit->setPlaceholderText("Enter your username");
+    usernameEdit->setPlaceholderText("Enter your assigned username");
     cardLay->addWidget(usernameEdit);
 
-    // Password
     QLabel* passLbl = new QLabel("Password", card);
     passLbl->setObjectName("fieldLabel");
     cardLay->addWidget(passLbl);
 
     passwordEdit = new QLineEdit(card);
     passwordEdit->setPlaceholderText("Enter your password");
-    passwordEdit->setEchoMode(QLineEdit::Password); // hides the typed text
+    passwordEdit->setEchoMode(QLineEdit::Password);
     cardLay->addWidget(passwordEdit);
 
-    // Hint label (shows credentials for demo purposes)
-    hintLabel = new QLabel("", card);
-    hintLabel->setObjectName("hintLabel");
-    hintLabel->setWordWrap(true);
-    cardLay->addWidget(hintLabel);
-
-    // Error label (hidden until login fails)
     errorLabel = new QLabel("", card);
     errorLabel->setObjectName("errorLabel");
     errorLabel->setAlignment(Qt::AlignCenter);
     cardLay->addWidget(errorLabel);
 
-    // Login button
-    loginBtn = new QPushButton("Login", card);
+    loginBtn = new QPushButton("Log In", card);
     loginBtn->setObjectName("loginBtn");
     cardLay->addWidget(loginBtn);
 
+    QHBoxLayout* btnRow = new QHBoxLayout();
+    dbSettingsBtn = new QPushButton("⚙️ Database Connection", card);
+    dbSettingsBtn->setProperty("class", "secondaryBtn");
+    btnRow->addWidget(dbSettingsBtn);
+
+    setupAdminBtn = new QPushButton("Create Super Admin", card);
+    setupAdminBtn->setProperty("class", "secondaryBtn");
+    setupAdminBtn->setVisible(false);
+    btnRow->addWidget(setupAdminBtn);
+
+    cardLay->addLayout(btnRow);
     outerLay->addWidget(card);
-    outerLay->addStretch();
 
-    // ── Set initial hint ──────────────────────────────────
-    onRoleChanged(0);  // show hint for "Citizen" by default
-
-    // ── Connect signals to slots ──────────────────────────
-    // When the role dropdown changes, update the hint label
-    connect(roleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &LoginDialog::onRoleChanged);
-
-    // Login button click
     connect(loginBtn, &QPushButton::clicked, this, &LoginDialog::onLoginClicked);
-
-    // Also allow pressing Enter inside the password field to log in
     connect(passwordEdit, &QLineEdit::returnPressed, this, &LoginDialog::onLoginClicked);
+    connect(dbSettingsBtn, &QPushButton::clicked, this, &LoginDialog::onDbSettingsClicked);
+    connect(setupAdminBtn, &QPushButton::clicked, this, &LoginDialog::onSetupAdminClicked);
+
+    // Initial database connection check: check db_config.ini first
+    QSettings settings("db_config.ini", QSettings::IniFormat);
+    QString host = settings.value("database/host", "127.0.0.1").toString();
+    int port = settings.value("database/port", 3306).toInt();
+    QString dbName = settings.value("database/name", "civic_grievance").toString();
+    QString dbUser = settings.value("database/user", "root").toString();
+    QString dbPass = settings.value("database/password", "").toString();
+
+    if (!DatabaseManager::instance().isConnected()) {
+        DatabaseManager::instance().connectToDatabase(host, port, dbName, dbUser, dbPass);
+    }
+    updateDbStatus();
 }
 
-// ─────────────────────────────────────────────────────────
-// onRoleChanged  –  update hint text whenever role is changed
-// ─────────────────────────────────────────────────────────
-void LoginDialog::onRoleChanged(int idx) {
-    // Clear any old error
-    errorLabel->setText("");
-
-    // Show the correct demo credentials as a hint
-    if (idx == 0) {
-        hintLabel->setText("Demo → username: citizen  |  password: citizen123\n"
-                           "Access: Register & Search");
-    } else if (idx == 1) {
-        hintLabel->setText("Demo → username: admin  |  password: admin123\n"
-                           "Access: View All, Search, Update Status, Process");
+void LoginDialog::updateDbStatus() {
+    DatabaseManager& db = DatabaseManager::instance();
+    if (!db.isConnected()) {
+        statusLabel->setText("⚠️ Database: Not connected. Click 'Database Connection' below to configure.");
+        statusLabel->setStyleSheet("color: #c53030; background: #fff5f5; border: 1px solid #feb2b2; padding: 8px; border-radius: 6px;");
+        setupAdminBtn->setVisible(false);
     } else {
-        hintLabel->setText("Demo → username: superadmin  |  password: super123\n"
-                           "Access: Full access (Dashboard + all features)");
+        if (!db.hasAnySuperAdmin()) {
+            statusLabel->setText("ℹ️ Connected to MySQL. No Super Admin account found. Please create one.");
+            statusLabel->setStyleSheet("color: #2b6cb0; background: #ebf8ff; border: 1px solid #bee3f8; padding: 8px; border-radius: 6px;");
+            setupAdminBtn->setVisible(true);
+        } else {
+            statusLabel->setText(" Connected to MySQL database (civic_grievance). Ready for login.");
+            statusLabel->setStyleSheet("color: #276749; background: #f0fff4; border: 1px solid #9ae6b4; padding: 8px; border-radius: 6px;");
+            setupAdminBtn->setVisible(false);
+        }
     }
 }
 
-// ─────────────────────────────────────────────────────────
-// checkCredentials  –  simple hardcoded credential check
-// Returns true if the username+password match the role
-// ─────────────────────────────────────────────────────────
-bool LoginDialog::checkCredentials(const QString& role,
-                                   const QString& username,
-                                   const QString& password)
-{
-    if (role == "Citizen") {
-        return (username == "citizen" && password == "citizen123");
-    }
-    if (role == "Admin") {
-        return (username == "admin" && password == "admin123");
-    }
-    if (role == "Super Admin") {
-        return (username == "superadmin" && password == "super123");
-    }
-    return false;
-}
-
-// ─────────────────────────────────────────────────────────
-// onLoginClicked  –  validate and accept the dialog
-// ─────────────────────────────────────────────────────────
 void LoginDialog::onLoginClicked() {
-    QString username = usernameEdit->text().trimmed();
-    QString password = passwordEdit->text();
+    errorLabel->setText("");
+    QString user = usernameEdit->text().trimmed();
+    QString pass = passwordEdit->text();
 
-    // Basic empty-field check
-    if (username.isEmpty() || password.isEmpty()) {
-        errorLabel->setText("⚠️  Please enter both username and password.");
+    if (user.isEmpty() || pass.isEmpty()) {
+        errorLabel->setText("Please enter both username and password.");
         return;
     }
 
-    // Get the selected role text (strip the emoji prefix)
-    int idx = roleCombo->currentIndex();
-    QString roleName;
-    if (idx == 0) roleName = "Citizen";
-    else if (idx == 1) roleName = "Admin";
-    else roleName = "Super Admin";
-
-    // Check if credentials are correct
-    if (!checkCredentials(roleName, username, password)) {
-        errorLabel->setText("❌  Invalid username or password. Please try again.");
-        passwordEdit->clear();
-        passwordEdit->setFocus();
+    DatabaseManager& db = DatabaseManager::instance();
+    if (!db.isConnected()) {
+        errorLabel->setText("Cannot login: Database is not connected.");
         return;
     }
 
-    // Credentials OK — set the role and close the dialog
-    if (idx == 0) loggedInRole = UserRole::Citizen;
-    else if (idx == 1) loggedInRole = UserRole::Admin;
-    else loggedInRole = UserRole::SuperAdmin;
+    auto authResult = db.authenticateUser(user, pass);
+    if (!authResult.has_value()) {
+        errorLabel->setText(db.lastError().isEmpty() ? "Invalid username or password." : db.lastError());
+        return;
+    }
 
-    accept();  // closes dialog with QDialog::Accepted result
+    authenticatedUser = authResult.value();
+    accept();
+}
+
+void LoginDialog::onDbSettingsClicked() {
+    QDialog dlg(this);
+    dlg.setWindowTitle("Configure MySQL Database Connection");
+    dlg.setFixedSize(380, 300);
+
+    QSettings settings("db_config.ini", QSettings::IniFormat);
+    QString curHost = settings.value("database/host", "127.0.0.1").toString();
+    int curPort = settings.value("database/port", 3306).toInt();
+    QString curDb = settings.value("database/name", "civic_grievance").toString();
+    QString curUser = settings.value("database/user", "root").toString();
+    QString curPass = settings.value("database/password", "").toString();
+
+    QFormLayout form(&dlg);
+    QLineEdit hostEdit(curHost, &dlg);
+    QSpinBox portBox(&dlg);
+    portBox.setRange(1, 65535);
+    portBox.setValue(curPort);
+    QLineEdit dbEdit(curDb, &dlg);
+    QLineEdit userEdit(curUser, &dlg);
+    QLineEdit passEdit(curPass, &dlg);
+    passEdit.setEchoMode(QLineEdit::Password);
+    passEdit.setPlaceholderText("MySQL root password");
+
+    form.addRow("Host:", &hostEdit);
+    form.addRow("Port:", &portBox);
+    form.addRow("Database:", &dbEdit);
+    form.addRow("Username:", &userEdit);
+    form.addRow("Password:", &passEdit);
+
+    QDialogButtonBox btns(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form.addRow(&btns);
+    connect(&btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(&btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        bool ok = DatabaseManager::instance().connectToDatabase(
+            hostEdit.text().trimmed(),
+            portBox.value(),
+            dbEdit.text().trimmed(),
+            userEdit.text().trimmed(),
+            passEdit.text()
+        );
+
+        if (!ok) {
+            QMessageBox::critical(this, "Connection Error",
+                                  "Failed to connect to MySQL database:\n" + DatabaseManager::instance().lastError());
+        } else {
+            // Save configuration for automatic connection on next launch
+            settings.setValue("database/host", hostEdit.text().trimmed());
+            settings.setValue("database/port", portBox.value());
+            settings.setValue("database/name", dbEdit.text().trimmed());
+            settings.setValue("database/user", userEdit.text().trimmed());
+            settings.setValue("database/password", passEdit.text());
+            settings.sync();
+
+            QMessageBox::information(this, "Success", "Connected to MySQL successfully and settings saved!");
+        }
+        updateDbStatus();
+    }
+}
+
+void LoginDialog::onSetupAdminClicked() {
+    QDialog dlg(this);
+    dlg.setWindowTitle("Create Initial Super Admin");
+    dlg.setFixedSize(360, 240);
+
+    QFormLayout form(&dlg);
+    QLineEdit userEdit("admin", &dlg);
+    QLineEdit passEdit(&dlg);
+    passEdit.setEchoMode(QLineEdit::Password);
+    QLineEdit confirmEdit(&dlg);
+    confirmEdit.setEchoMode(QLineEdit::Password);
+
+    form.addRow("Super Admin Username:", &userEdit);
+    form.addRow("Password:", &passEdit);
+    form.addRow("Confirm Password:", &confirmEdit);
+
+    QDialogButtonBox btns(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form.addRow(&btns);
+    connect(&btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(&btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        if (userEdit.text().trimmed().isEmpty() || passEdit.text().isEmpty()) {
+            QMessageBox::warning(this, "Validation Error", "Username and password cannot be empty.");
+            return;
+        }
+        if (passEdit.text() != confirmEdit.text()) {
+            QMessageBox::warning(this, "Validation Error", "Passwords do not match.");
+            return;
+        }
+
+        bool ok = DatabaseManager::instance().ensureInitialSuperAdmin(userEdit.text().trimmed(), passEdit.text());
+        if (ok) {
+            QMessageBox::information(this, "Admin Created",
+                                    "Super Admin created successfully!\nYou can now log in with these credentials.");
+            usernameEdit->setText(userEdit.text().trimmed());
+            passwordEdit->clear();
+            updateDbStatus();
+        } else {
+            QMessageBox::critical(this, "Error", "Failed to create Super Admin:\n" + DatabaseManager::instance().lastError());
+        }
+    }
 }
