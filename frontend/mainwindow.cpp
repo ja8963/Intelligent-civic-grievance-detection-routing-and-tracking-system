@@ -1,851 +1,1169 @@
 #include "mainwindow.h"
 
-#include <QApplication>
-#include <QHBoxLayout>
 #include <QVBoxLayout>
-#include <QFormLayout>
-#include <QPushButton>
-#include <QScrollArea>
+#include <QHBoxLayout>
+#include <QGridLayout>
 #include <QHeaderView>
 #include <QMessageBox>
-#include <QSplitter>
-#include <QSpacerItem>
-#include <QSizePolicy>
-#include <QString>
-#include <QFont>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QDate>
+#include <QScrollArea>
 
-// ─────────────────────────────────────────
-// Global application stylesheet
-// ─────────────────────────────────────────
+// ──────────────────────────────────────────
+// Modern CSS Styling
+// ──────────────────────────────────────────
 static const char* APP_STYLE = R"(
-QMainWindow { background-color: #f0f4f8; }
-QWidget      { color: #111111; }
-
+QMainWindow {
+    background-color: #f7fafc;
+    color: #1a202c;
+}
+QWidget {
+    color: #1a202c;
+}
+QLabel {
+    color: #1a202c;
+    font-size: 13px;
+}
 QWidget#sidebar {
-    background-color: #1565C0;
-    min-width: 200px;
+    background-color: #1a202c;
+    min-width: 220px;
+    max-width: 220px;
 }
-
-QPushButton#navBtn {
-    background-color: transparent;
-    color: white;
-    text-align: left;
-    padding: 12px 20px;
-    border: none;
-    font-size: 14px;
-    border-radius: 0px;
+QWidget#sidebar QLabel {
+    color: #ffffff;
 }
-QPushButton#navBtn:hover   { background-color: #1976D2; }
-QPushButton#navBtn:checked { background-color: #0D47A1; font-weight: bold; }
-
-QLabel#pageTitle {
-    font-size: 22px;
+QLabel#appTitle {
+    color: #ffffff;
+    font-size: 16px;
     font-weight: bold;
-    color: #1565C0;
+    padding: 16px 12px 4px 12px;
 }
+QLabel#userInfo {
+    color: #cbd5e0;
+    font-size: 11px;
+    padding: 0px 12px 16px 12px;
+    border-bottom: 1px solid #2d3748;
+}
+QPushButton.navBtn {
+    background-color: transparent;
+    color: #cbd5e0;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    margin: 2px 8px;
+}
+QPushButton.navBtn:hover {
+    background-color: #2d3748;
+    color: #ffffff;
+}
+QPushButton.navBtnActive {
+    background-color: #3182ce;
+    color: #ffffff;
+    font-weight: bold;
+}
+QLabel#pageHeader {
+    font-size: 20px;
+    font-weight: bold;
+    color: #1a202c;
+    margin-bottom: 8px;
+}
+QFrame.card {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e0;
+    border-radius: 8px;
+    padding: 16px;
+}
+QLabel.cardTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4a5568;
+}
+QLabel.cardNumber {
+    font-size: 28px;
+    font-weight: bold;
+}
+QLineEdit, QTextEdit, QComboBox {
+    border: 1px solid #a0aec0;
+    border-radius: 6px;
+    padding: 8px;
+    background-color: #ffffff;
+    font-size: 13px;
+    color: #1a202c;
+}
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus {
+    border: 2px solid #3182ce;
+    color: #1a202c;
+}
+QComboBox QAbstractItemView {
+    color: #1a202c;
+    background-color: #ffffff;
+    selection-background-color: #ebf8ff;
+    selection-color: #2b6cb0;
+}
+QPushButton.primaryBtn {
+    background-color: #3182ce;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 13px;
+    font-weight: bold;
+}
+QPushButton.primaryBtn:hover { background-color: #2b6cb0; }
+QPushButton.primaryBtn:pressed { background-color: #2c5282; }
+
+QPushButton.urgentBtn {
+    background-color: #e53e3e;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 13px;
+    font-weight: bold;
+}
+QPushButton.urgentBtn:hover { background-color: #c53030; }
 
 QTableWidget {
-    background-color: white;
-    border: 1px solid #e0e0e0;
-    gridline-color: #e0e0e0;
-    font-size: 13px;
+    background-color: #ffffff;
+    color: #1a202c;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    gridline-color: #e2e8f0;
+    font-size: 12px;
+}
+QTableWidget::item {
+    color: #1a202c;
+    background-color: #ffffff;
+    padding: 6px;
+}
+QTableWidget::item:selected {
+    background-color: #ebf8ff;
+    color: #2b6cb0;
 }
 QHeaderView::section {
-    background-color: #1565C0;
-    color: white;
-    padding: 8px;
+    background-color: #edf2f7;
+    color: #1a202c;
     font-weight: bold;
+    font-size: 12px;
     border: none;
-}
-
-QPushButton {
-    background-color: #1976D2;
-    color: white;
-    border: none;
-    padding: 8px 18px;
-    border-radius: 4px;
-    font-size: 13px;
-}
-QPushButton:hover   { background-color: #1565C0; }
-QPushButton:pressed { background-color: #0D47A1; }
-
-QLineEdit, QComboBox {
-    border: 1px solid #bdbdbd;
-    border-radius: 4px;
+    border-bottom: 2px solid #cbd5e0;
     padding: 6px;
-    font-size: 13px;
-    background: white;
-    color: #111111;
 }
-QLineEdit:focus, QComboBox:focus { border: 2px solid #1976D2; color: #111111; }
-QComboBox QAbstractItemView { color: #111111; background: white; }
-
-QScrollArea { border: none; background: transparent; }
-
-QMessageBox {
-    background-color: #ffffff;
-    color: #111111;
-}
-QMessageBox QLabel {
-    color: #111111;
-    background-color: transparent;
-    font-size: 13px;
-}
-QMessageBox QPushButton {
-    background-color: #1976D2;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 8px 24px;
-    font-size: 13px;
-    min-width: 80px;
-}
-QMessageBox QPushButton:hover { background-color: #1565C0; }
 )";
 
-// ─────────────────────────────────────────
-// Constructor
-// ─────────────────────────────────────────
-MainWindow::MainWindow(UserRole role, QWidget* parent)
-    : QMainWindow(parent), currentRole(role)
+MainWindow::MainWindow(const User& user, QWidget* parent)
+    : QMainWindow(parent), currentUser(user)
 {
-    // Apply the stylesheet to the whole application
-    qApp->setStyleSheet(APP_STYLE);
+    setStyleSheet(APP_STYLE);
 
-    // Central widget: sidebar + stacked pages side by side
-    QWidget*     central  = new QWidget(this);
-    QHBoxLayout* rootLay  = new QHBoxLayout(central);
-    rootLay->setContentsMargins(0, 0, 0, 0);
-    rootLay->setSpacing(0);
-
-    // Build navigation sidebar
-    QWidget* nav = createNavBar();
-    rootLay->addWidget(nav);
-
-    // Build all pages
-    dashboardPage = buildDashboardPage();
-    registerPage  = buildRegisterPage();
-    viewPage      = buildViewPage();
-    searchPage    = buildSearchPage();
-    updatePage    = buildUpdatePage();
-    processPage   = buildProcessPage();
-
-    // Stack widget holds all pages
-    stack = new QStackedWidget(this);
-    stack->addWidget(dashboardPage);   // index 0
-    stack->addWidget(registerPage);    // index 1
-    stack->addWidget(viewPage);        // index 2
-    stack->addWidget(searchPage);      // index 3
-    stack->addWidget(updatePage);      // index 4
-    stack->addWidget(processPage);     // index 5
-
-    rootLay->addWidget(stack, 1);
-
+    QWidget* central = new QWidget(this);
     setCentralWidget(central);
 
-    // Start on the correct page depending on role
-    if (currentRole == UserRole::Citizen) {
-        showRegisterPage();
-    } else if (currentRole == UserRole::Admin) {
-        showViewPage();
-    } else {
-        showDashboard();  // SuperAdmin starts on dashboard
-    }
+    QHBoxLayout* mainLayout = new QHBoxLayout(central);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
+
+    // Sidebar
+    QWidget* navBar = createNavBar();
+    mainLayout->addWidget(navBar);
+
+    // Stacked Pages
+    stack = new QStackedWidget(this);
+
+    dashboardPage      = buildDashboardPage();
+    registerPage       = buildRegisterPage();
+    viewPage           = buildViewPage();
+    searchPage         = buildSearchPage();
+    updatePage         = buildUpdatePage();
+    processPage        = buildProcessPage();
+    userManagementPage = buildUserManagementPage();
+
+    stack->addWidget(dashboardPage);
+    stack->addWidget(registerPage);
+    stack->addWidget(viewPage);
+    stack->addWidget(searchPage);
+    stack->addWidget(updatePage);
+    stack->addWidget(processPage);
+    stack->addWidget(userManagementPage);
+
+    mainLayout->addWidget(stack, 1);
+
+    // Populate in-memory DSA from database
+    syncInMemoryWithDatabase();
+
+    // Show initial dashboard
+    showDashboard();
 }
 
-// ─────────────────────────────────────────
-// createNavBar – left blue sidebar with nav buttons
-// ─────────────────────────────────────────
+void MainWindow::syncInMemoryWithDatabase() {
+    auto dbComplaints = DatabaseManager::instance().loadAllComplaintsForSystem();
+    system.loadFromRecords(dbComplaints);
+}
+
 QWidget* MainWindow::createNavBar() {
-    QWidget*     sidebar = new QWidget(this);
+    QWidget* sidebar = new QWidget(this);
     sidebar->setObjectName("sidebar");
-    sidebar->setMinimumWidth(210);
-    sidebar->setMaximumWidth(210);
 
     QVBoxLayout* lay = new QVBoxLayout(sidebar);
-    lay->setContentsMargins(0, 0, 0, 0);
-    lay->setSpacing(0);
+    lay->setContentsMargins(0, 0, 0, 16);
+    lay->setSpacing(4);
 
-    // App title at the top of the sidebar
-    QLabel* appTitle = new QLabel("🏛  Civic Grievance\nManagement", sidebar);
-    appTitle->setStyleSheet("color: white; font-size: 15px; font-weight: bold; "
-                            "padding: 20px 14px 16px 14px;");
-    appTitle->setWordWrap(true);
-    lay->addWidget(appTitle);
+    QLabel* title = new QLabel("🏛️ Civic Grievance", sidebar);
+    title->setObjectName("appTitle");
+    lay->addWidget(title);
 
-    // Show which role is logged in
-    QString roleText;
-    if (currentRole == UserRole::Citizen)       roleText = "👤 Citizen";
-    else if (currentRole == UserRole::Admin)     roleText = "🛠️ Admin";
-    else                                         roleText = "⭐ Super Admin";
+    QString deptStr = currentUser.isSuperAdmin() ? "All Departments" : currentUser.departmentName;
+    QLabel* info = new QLabel(QString("User: %1\nRole: %2\nDept: %3")
+                                  .arg(currentUser.username, currentUser.roleName(), deptStr), sidebar);
+    info->setObjectName("userInfo");
+    info->setWordWrap(true);
+    lay->addWidget(info);
+    lay->addSpacing(8);
 
-    QLabel* roleBadge = new QLabel(roleText, sidebar);
-    roleBadge->setStyleSheet(
-        "color: #90CAF9; font-size: 11px; padding: 0px 14px 14px 14px;");
-    lay->addWidget(roleBadge);
+    navDashBtn    = new QPushButton("📊  Dashboard", sidebar);
+    navRegBtn     = new QPushButton("➕  Register Complaint", sidebar);
+    navViewBtn    = new QPushButton(currentUser.isSuperAdmin() ? "📋  All Complaints" : "📋  Dept Complaints", sidebar);
+    navSearchBtn  = new QPushButton("🔍  Search by ID", sidebar);
+    navUpdateBtn  = new QPushButton("🔄  Update Status", sidebar);
+    navProcessBtn = new QPushButton("⚙️  Process Queue", sidebar);
+    navUsersBtn   = new QPushButton("👥  Manage Admins", sidebar);
 
-    // Thin divider line
-    QFrame* line = new QFrame(sidebar);
-    line->setFrameShape(QFrame::HLine);
-    line->setStyleSheet("background-color: #1976D2; margin: 0 10px;");
-    line->setFixedHeight(1);
-    lay->addWidget(line);
-    lay->addSpacing(6);
-
-    // Helper to create a nav button
-    auto makeBtn = [&](const QString& icon, const QString& label) -> QPushButton* {
-        QPushButton* btn = new QPushButton(icon + "  " + label, sidebar);
-        btn->setObjectName("navBtn");
-        btn->setCheckable(true);
-        btn->setAutoExclusive(true);
-        btn->setMinimumHeight(48);
-        btn->setCursor(Qt::PointingHandCursor);
-        lay->addWidget(btn);
-        return btn;
-    };
-
-    // Create all nav buttons
-    QPushButton* btnDash    = makeBtn("📊", "Dashboard");
-    QPushButton* btnReg     = makeBtn("📝", "Register Complaint");
-    QPushButton* btnView    = makeBtn("📋", "View All Complaints");
-    QPushButton* btnSearch  = makeBtn("🔍", "Search");
-    QPushButton* btnUpdate  = makeBtn("✏️",  "Update Status");
-    QPushButton* btnProcess = makeBtn("⚙️",  "Process Complaints");
-
-    // ── Role-based visibility ──────────────────────────────
-    // Citizen: can only Register and Search
-    // Admin:   can View All, Search, Update, Process (no Dashboard)
-    // SuperAdmin: everything
-    if (currentRole == UserRole::Citizen) {
-        btnDash->setVisible(false);
-        btnView->setVisible(false);
-        btnUpdate->setVisible(false);
-        btnProcess->setVisible(false);
-    } else if (currentRole == UserRole::Admin) {
-        btnDash->setVisible(false);
+    QList<QPushButton*> btns = {navDashBtn, navRegBtn, navViewBtn, navSearchBtn, navUpdateBtn, navProcessBtn, navUsersBtn};
+    for (QPushButton* b : btns) {
+        b->setProperty("class", "navBtn");
+        lay->addWidget(b);
     }
-    // SuperAdmin sees all buttons
 
-    lay->addStretch();  // push buttons to top
-
-    // ── Connect buttons to show* slots ────────────────────
-    connect(btnDash,    &QPushButton::clicked, this, &MainWindow::showDashboard);
-    connect(btnReg,     &QPushButton::clicked, this, &MainWindow::showRegisterPage);
-    connect(btnView,    &QPushButton::clicked, this, &MainWindow::showViewPage);
-    connect(btnSearch,  &QPushButton::clicked, this, &MainWindow::showSearchPage);
-    connect(btnUpdate,  &QPushButton::clicked, this, &MainWindow::showUpdatePage);
-    connect(btnProcess, &QPushButton::clicked, this, &MainWindow::showProcessPage);
-
-    // Choose the default selected button depending on role
-    if (currentRole == UserRole::Citizen) {
-        btnReg->setChecked(true);
-    } else if (currentRole == UserRole::Admin) {
-        btnView->setChecked(true);
-    } else {
-        btnDash->setChecked(true);
+    // Role-based visibility
+    if (!currentUser.isSuperAdmin()) {
+        navUsersBtn->setVisible(false); // Only Super Admin can access user management
     }
+
+    lay->addStretch();
+
+    QPushButton* logoutBtn = new QPushButton("🚪 Log Out", sidebar);
+    logoutBtn->setProperty("class", "navBtn");
+    lay->addWidget(logoutBtn);
+
+    connect(navDashBtn, &QPushButton::clicked, this, &MainWindow::showDashboard);
+    connect(navRegBtn, &QPushButton::clicked, this, &MainWindow::showRegisterPage);
+    connect(navViewBtn, &QPushButton::clicked, this, &MainWindow::showViewPage);
+    connect(navSearchBtn, &QPushButton::clicked, this, &MainWindow::showSearchPage);
+    connect(navUpdateBtn, &QPushButton::clicked, this, &MainWindow::showUpdatePage);
+    connect(navProcessBtn, &QPushButton::clicked, this, &MainWindow::showProcessPage);
+    connect(navUsersBtn, &QPushButton::clicked, this, &MainWindow::showUserManagementPage);
+    connect(logoutBtn, &QPushButton::clicked, this, &QWidget::close);
 
     return sidebar;
 }
 
-// ─────────────────────────────────────────
-// makeStatCard – coloured box showing a big number + title
-// ─────────────────────────────────────────
 QFrame* MainWindow::makeStatCard(const QString& title, QLabel*& numLabel, const QString& colour) {
-    QFrame* card = new QFrame;
-    card->setStyleSheet(QString("QFrame { background: %1; border-radius: 10px; }").arg(colour));
-    card->setMinimumSize(160, 110);
+    QFrame* card = new QFrame(this);
+    card->setProperty("class", "card");
 
     QVBoxLayout* lay = new QVBoxLayout(card);
-    lay->setAlignment(Qt::AlignCenter);
-
-    numLabel = new QLabel("0", card);
-    numLabel->setStyleSheet("color: white; font-size: 36px; font-weight: bold;");
-    numLabel->setAlignment(Qt::AlignCenter);
+    lay->setContentsMargins(16, 12, 16, 12);
+    lay->setSpacing(4);
 
     QLabel* titleLbl = new QLabel(title, card);
-    titleLbl->setStyleSheet("color: white; font-size: 13px;");
-    titleLbl->setAlignment(Qt::AlignCenter);
-
-    lay->addWidget(numLabel);
+    titleLbl->setProperty("class", "cardTitle");
     lay->addWidget(titleLbl);
+
+    numLabel = new QLabel("0", card);
+    numLabel->setProperty("class", "cardNumber");
+    numLabel->setStyleSheet(QString("color: %1;").arg(colour));
+    lay->addWidget(numLabel);
+
     return card;
 }
 
-// ─────────────────────────────────────────
-// buildDashboardPage
-// ─────────────────────────────────────────
+// ──────────────────────────────────────────
+// Dashboard Page
+// ──────────────────────────────────────────
 QWidget* MainWindow::buildDashboardPage() {
-    QWidget*     page = new QWidget;
-    QVBoxLayout* lay  = new QVBoxLayout(page);
-    lay->setContentsMargins(28, 24, 28, 24);
-    lay->setSpacing(20);
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(16);
 
-    QLabel* title = new QLabel("Dashboard", page);
-    title->setObjectName("pageTitle");
-    lay->addWidget(title);
+    QLabel* header = new QLabel(currentUser.isSuperAdmin() ? "System Overview & Analytics" : QString("%1 Department Dashboard").arg(currentUser.departmentName), page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
 
-    // ── Stat cards row ──
-    QHBoxLayout* cardRow = new QHBoxLayout;
-    cardRow->setSpacing(20);
+    // Cards Grid
+    QHBoxLayout* cardsLay = new QHBoxLayout();
+    cardsLay->setSpacing(12);
 
-    QFrame* totalCard    = makeStatCard("Total Complaints", totalLabel,    "#1565C0");
-    QFrame* pendingCard  = makeStatCard("Pending",          pendingLabel,  "#E65100");
-    QFrame* resolvedCard = makeStatCard("Resolved",         resolvedLabel, "#2E7D32");
+    cardsLay->addWidget(makeStatCard("Total Complaints", totalLabel, "#2b6cb0"));
+    cardsLay->addWidget(makeStatCard("Registered (Pending)", pendingLabel, "#d69e2e"));
+    cardsLay->addWidget(makeStatCard("In Progress", inProgressLabel, "#3182ce"));
+    cardsLay->addWidget(makeStatCard("Resolved", resolvedLabel, "#38a169"));
+    cardsLay->addWidget(makeStatCard("Urgent / High", urgentLabel, "#e53e3e"));
 
-    cardRow->addWidget(totalCard);
-    cardRow->addWidget(pendingCard);
-    cardRow->addWidget(resolvedCard);
-    cardRow->addStretch();
-    lay->addLayout(cardRow);
+    mainLay->addLayout(cardsLay);
 
-    // ── Recent complaints table ──
-    QLabel* recentTitle = new QLabel("Recent Complaints (latest 5)", page);
-    recentTitle->setStyleSheet("font-size: 16px; font-weight: bold; color: #333;");
-    lay->addWidget(recentTitle);
+    // Department breakdown for Super Admin
+    if (currentUser.isSuperAdmin()) {
+        QLabel* deptHeader = new QLabel("Departmental Distribution", page);
+        deptHeader->setStyleSheet("font-size: 14px; font-weight: bold; color: #4a5568;");
+        mainLay->addWidget(deptHeader);
 
-    recentTable = new QTableWidget(0, 6, page);
-    recentTable->setHorizontalHeaderLabels({"ID", "Citizen", "Category", "Department", "Priority", "Status"});
+        deptStatsTable = new QTableWidget(page);
+        deptStatsTable->setColumnCount(2);
+        deptStatsTable->setHorizontalHeaderLabels({"Department", "Active Complaints"});
+        deptStatsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        deptStatsTable->setMaximumHeight(140);
+        mainLay->addWidget(deptStatsTable);
+    }
+
+    QLabel* recentHeader = new QLabel("Recent Activity", page);
+    recentHeader->setStyleSheet("font-size: 14px; font-weight: bold; color: #4a5568;");
+    mainLay->addWidget(recentHeader);
+
+    recentTable = new QTableWidget(page);
+    recentTable->setColumnCount(7);
+    recentTable->setHorizontalHeaderLabels({"ID", "Citizen", "Category", "Department", "Priority", "Status", "Date"});
     recentTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    recentTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    recentTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    recentTable->setAlternatingRowColors(true);
-    recentTable->verticalHeader()->setVisible(false);
-    lay->addWidget(recentTable);
+    mainLay->addWidget(recentTable, 1);
+
+    connect(recentTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onComplaintTableDoubleClicked);
 
     return page;
 }
 
-// ─────────────────────────────────────────
-// buildRegisterPage
-// ─────────────────────────────────────────
+void MainWindow::refreshDashboard() {
+    auto stats = DatabaseManager::instance().getStatistics(currentUser);
+    totalLabel->setText(QString::number(stats.totalComplaints));
+    pendingLabel->setText(QString::number(stats.pendingComplaints));
+    inProgressLabel->setText(QString::number(stats.inProgressComplaints));
+    resolvedLabel->setText(QString::number(stats.resolvedComplaints));
+    urgentLabel->setText(QString::number(stats.urgentComplaints));
+
+    // Department breakdown table
+    if (currentUser.isSuperAdmin() && deptStatsTable) {
+        deptStatsTable->setRowCount((int)stats.departmentCounts.size());
+        for (int i = 0; i < (int)stats.departmentCounts.size(); ++i) {
+            deptStatsTable->setItem(i, 0, new QTableWidgetItem(stats.departmentCounts[i].first));
+            deptStatsTable->setItem(i, 1, new QTableWidgetItem(QString::number(stats.departmentCounts[i].second)));
+        }
+    }
+
+    // Recent complaints
+    auto list = DatabaseManager::instance().getComplaints(currentUser);
+    int showCount = std::min(10, (int)list.size());
+    recentTable->setRowCount(showCount);
+    for (int i = 0; i < showCount; ++i) {
+        const auto& c = list[i];
+        recentTable->setItem(i, 0, new QTableWidgetItem(QString::number(c.id)));
+        recentTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(c.citizen)));
+        recentTable->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(c.category)));
+        recentTable->setItem(i, 3, new QTableWidgetItem(QString::fromStdString(c.department)));
+        recentTable->setItem(i, 4, new QTableWidgetItem(QString::fromStdString(priorityName(c.priority))));
+        recentTable->setItem(i, 5, new QTableWidgetItem(QString::fromStdString(c.status)));
+        recentTable->setItem(i, 6, new QTableWidgetItem(QString::fromStdString(c.createdAt)));
+    }
+}
+
+// ──────────────────────────────────────────
+// Register Page
+// ──────────────────────────────────────────
 QWidget* MainWindow::buildRegisterPage() {
-    QWidget*     page = new QWidget;
-    QVBoxLayout* lay  = new QVBoxLayout(page);
-    lay->setContentsMargins(28, 24, 28, 24);
-    lay->setSpacing(16);
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(16);
 
-    QLabel* title = new QLabel("Register a New Complaint", page);
-    title->setObjectName("pageTitle");
-    lay->addWidget(title);
+    QLabel* header = new QLabel("Register New Grievance", page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
 
-    // Scroll area so small windows still work
-    QScrollArea* scroll = new QScrollArea(page);
-    scroll->setWidgetResizable(true);
+    QFrame* formCard = new QFrame(page);
+    formCard->setProperty("class", "card");
+    QFormLayout* form = new QFormLayout(formCard);
+    form->setSpacing(12);
 
-    QWidget*     inner  = new QWidget;
-    QFormLayout* form   = new QFormLayout(inner);
-    form->setSpacing(14);
-    form->setContentsMargins(0, 0, 40, 0);
-    form->setLabelAlignment(Qt::AlignRight);
+    nameInput = new QLineEdit(formCard);
+    nameInput->setPlaceholderText("Citizen's full name");
+    form->addRow("Citizen Name *:", nameInput);
 
-    nameInput = new QLineEdit;
-    nameInput->setPlaceholderText("Enter citizen full name");
+    contactInput = new QLineEdit(formCard);
+    contactInput->setPlaceholderText("Phone number or email address");
+    form->addRow("Contact Info:", contactInput);
 
-    categoryCombo = new QComboBox;
-    categoryCombo->addItems({"Pothole", "Garbage", "Street Light", "Water Leakage", "Drainage"});
+    categoryCombo = new QComboBox(formCard);
+    categoryCombo->addItems({"Pothole", "Garbage", "Street Light", "Water Leakage", "Drainage", "General Issue"});
+    form->addRow("Category *:", categoryCombo);
 
-    descInput = new QLineEdit;
-    descInput->setPlaceholderText("Briefly describe the issue");
+    autoDeptLabel = new QLabel("Auto-routed Department: Road", formCard);
+    autoDeptLabel->setStyleSheet("color: #2b6cb0; font-weight: bold;");
+    form->addRow("Routing:", autoDeptLabel);
 
-    locationInput = new QLineEdit;
-    locationInput->setPlaceholderText("Address or landmark");
+    priorityCombo = new QComboBox(formCard);
+    priorityCombo->addItem("Low", 1);
+    priorityCombo->addItem("Medium", 2);
+    priorityCombo->addItem("High (Urgent)", 3);
+    form->addRow("Priority *:", priorityCombo);
 
-    priorityCombo = new QComboBox;
-    priorityCombo->addItems({"Low", "Medium", "High"});
-    priorityCombo->setCurrentIndex(1); // default Medium
+    locationInput = new QLineEdit(formCard);
+    locationInput->setPlaceholderText("Street, Ward, Area, Landmark");
+    form->addRow("Location *:", locationInput);
 
-    QPushButton* registerBtn = new QPushButton("  Register Complaint  ");
-    registerBtn->setMinimumHeight(40);
+    descInput = new QTextEdit(formCard);
+    descInput->setPlaceholderText("Describe the problem in detail...");
+    descInput->setMaximumHeight(100);
+    form->addRow("Description *:", descInput);
 
-    form->addRow("Citizen Name *",  nameInput);
-    form->addRow("Category *",      categoryCombo);
-    form->addRow("Description",     descInput);
-    form->addRow("Location",        locationInput);
-    form->addRow("Priority",        priorityCombo);
-    form->addRow("",                registerBtn);
+    registerResultLabel = new QLabel("", formCard);
+    registerResultLabel->setWordWrap(true);
+    form->addRow("", registerResultLabel);
 
-    scroll->setWidget(inner);
-    lay->addWidget(scroll);
+    QPushButton* submitBtn = new QPushButton("Submit Grievance", formCard);
+    submitBtn->setProperty("class", "primaryBtn");
+    form->addRow("", submitBtn);
 
-    connect(registerBtn, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
+    mainLay->addWidget(formCard);
+    mainLay->addStretch();
+
+    connect(categoryCombo, &QComboBox::currentTextChanged, this, [this](const QString& cat) {
+        string dept = departmentFor(cat.toStdString());
+        autoDeptLabel->setText("Auto-routed Department: " + QString::fromStdString(dept));
+    });
+
+    connect(submitBtn, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
 
     return page;
 }
 
-// ─────────────────────────────────────────
-// buildViewPage
-// ─────────────────────────────────────────
+void MainWindow::onRegisterClicked() {
+    registerResultLabel->setText("");
+    QString citizen = nameInput->text().trimmed();
+    QString contact = contactInput->text().trimmed();
+    QString category = categoryCombo->currentText();
+    QString location = locationInput->text().trimmed();
+    QString desc = descInput->toPlainText().trimmed();
+    int priority = priorityCombo->currentData().toInt();
+
+    // Input validation
+    if (citizen.isEmpty() || location.isEmpty() || desc.isEmpty()) {
+        registerResultLabel->setText("❌ Error: Citizen Name, Location, and Description are required.");
+        registerResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        return;
+    }
+
+    Complaint c;
+    c.citizen = citizen.toStdString();
+    c.contact = contact.toStdString();
+    c.category = category.toStdString();
+    c.location = location.toStdString();
+    c.description = desc.toStdString();
+    c.priority = static_cast<Priority>(priority);
+    c.department = departmentFor(c.category);
+    c.status = "Registered";
+
+    // 1. Persist to MySQL
+    int generatedId = 0;
+    bool ok = DatabaseManager::instance().registerComplaint(c, generatedId);
+    if (!ok) {
+        registerResultLabel->setText("❌ Database Error: " + DatabaseManager::instance().lastError());
+        registerResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        return;
+    }
+
+    c.id = generatedId;
+    // 2. Insert into in-memory DSA
+    syncInMemoryWithDatabase();
+
+    registerResultLabel->setText(QString(" Grievance #%1 registered successfully and routed to %2 Department!")
+                                     .arg(generatedId).arg(QString::fromStdString(c.department)));
+    registerResultLabel->setStyleSheet("color: #38a169; font-weight: bold;");
+
+    // Clear inputs
+    nameInput->clear();
+    contactInput->clear();
+    locationInput->clear();
+    descInput->clear();
+}
+
+// ──────────────────────────────────────────
+// View Complaints Page (with Filters)
+// ──────────────────────────────────────────
 QWidget* MainWindow::buildViewPage() {
-    QWidget*     page = new QWidget;
-    QVBoxLayout* lay  = new QVBoxLayout(page);
-    lay->setContentsMargins(28, 24, 28, 24);
-    lay->setSpacing(16);
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(12);
 
-    QLabel* title = new QLabel("All Complaints", page);
-    title->setObjectName("pageTitle");
-    lay->addWidget(title);
+    QLabel* header = new QLabel(currentUser.isSuperAdmin() ? "All Civic Grievances" : QString("%1 Department Complaints").arg(currentUser.departmentName), page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
 
-    QPushButton* refreshBtn = new QPushButton("🔄  Refresh");
-    refreshBtn->setMaximumWidth(140);
-    lay->addWidget(refreshBtn);
+    // Filter Bar
+    QHBoxLayout* filterRow = new QHBoxLayout();
+    filterSearchInput = new QLineEdit(page);
+    filterSearchInput->setPlaceholderText("Search by ID, citizen, location, or keyword...");
+    filterRow->addWidget(filterSearchInput, 2);
 
-    allComplaintsTable = new QTableWidget(0, 8, page);
-    allComplaintsTable->setHorizontalHeaderLabels(
-        {"ID", "Citizen Name", "Category", "Department", "Priority", "Status", "Description", "Location"});
+    filterStatusCombo = new QComboBox(page);
+    filterStatusCombo->addItems({"All", "Registered", "In Progress", "Urgent Processing", "Resolved", "Closed"});
+    filterRow->addWidget(filterStatusCombo, 1);
+
+    QPushButton* refreshBtn = new QPushButton("🔄 Refresh", page);
+    refreshBtn->setProperty("class", "primaryBtn");
+    filterRow->addWidget(refreshBtn);
+
+    mainLay->addLayout(filterRow);
+
+    allComplaintsTable = new QTableWidget(page);
+    allComplaintsTable->setColumnCount(9);
+    allComplaintsTable->setHorizontalHeaderLabels({"ID", "Date", "Citizen", "Contact", "Category", "Department", "Priority", "Status", "Location"});
     allComplaintsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    allComplaintsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     allComplaintsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    allComplaintsTable->setAlternatingRowColors(true);
-    allComplaintsTable->verticalHeader()->setVisible(false);
-    lay->addWidget(allComplaintsTable);
+    allComplaintsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    mainLay->addWidget(allComplaintsTable, 1);
 
+    QHBoxLayout* actionsRow = new QHBoxLayout();
+    QLabel* tipLabel = new QLabel("💡 Tip: Double-click any row to view full grievance details and status audit history.", page);
+    tipLabel->setStyleSheet("color: #718096; font-size: 11px;");
+    actionsRow->addWidget(tipLabel);
+
+    QPushButton* viewHistBtn = new QPushButton("View Details & Audit History", page);
+    actionsRow->addWidget(viewHistBtn);
+    mainLay->addLayout(actionsRow);
+
+    connect(filterSearchInput, &QLineEdit::textChanged, this, &MainWindow::onFilterChanged);
+    connect(filterStatusCombo, &QComboBox::currentTextChanged, this, &MainWindow::onFilterChanged);
     connect(refreshBtn, &QPushButton::clicked, this, &MainWindow::refreshAllComplaintsTable);
+    connect(allComplaintsTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onComplaintTableDoubleClicked);
+    connect(viewHistBtn, &QPushButton::clicked, this, &MainWindow::onViewHistoryClicked);
 
     return page;
 }
 
-// ─────────────────────────────────────────
-// buildSearchPage
-// ─────────────────────────────────────────
+void MainWindow::onFilterChanged() {
+    refreshAllComplaintsTable();
+}
+
+void MainWindow::refreshAllComplaintsTable() {
+    QString kw = filterSearchInput->text().trimmed();
+    QString status = filterStatusCombo->currentText();
+
+    auto list = DatabaseManager::instance().getComplaints(currentUser, status, kw);
+    allComplaintsTable->setRowCount((int)list.size());
+
+    for (int i = 0; i < (int)list.size(); ++i) {
+        const auto& c = list[i];
+        allComplaintsTable->setItem(i, 0, new QTableWidgetItem(QString::number(c.id)));
+        allComplaintsTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(c.createdAt)));
+        allComplaintsTable->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(c.citizen)));
+        allComplaintsTable->setItem(i, 3, new QTableWidgetItem(QString::fromStdString(c.contact)));
+        allComplaintsTable->setItem(i, 4, new QTableWidgetItem(QString::fromStdString(c.category)));
+        allComplaintsTable->setItem(i, 5, new QTableWidgetItem(QString::fromStdString(c.department)));
+        allComplaintsTable->setItem(i, 6, new QTableWidgetItem(QString::fromStdString(priorityName(c.priority))));
+        allComplaintsTable->setItem(i, 7, new QTableWidgetItem(QString::fromStdString(c.status)));
+        allComplaintsTable->setItem(i, 8, new QTableWidgetItem(QString::fromStdString(c.location)));
+    }
+}
+
+// ──────────────────────────────────────────
+// Search Page
+// ──────────────────────────────────────────
 QWidget* MainWindow::buildSearchPage() {
-    QWidget*     page = new QWidget;
-    QVBoxLayout* lay  = new QVBoxLayout(page);
-    lay->setContentsMargins(28, 24, 28, 24);
-    lay->setSpacing(16);
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(16);
 
-    QLabel* title = new QLabel("Search Complaint by ID", page);
-    title->setObjectName("pageTitle");
-    lay->addWidget(title);
+    QLabel* header = new QLabel("Lookup Grievance by ID", page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
 
-    // Search bar row
-    QHBoxLayout* row = new QHBoxLayout;
-    searchIdInput = new QLineEdit;
-    searchIdInput->setPlaceholderText("Enter Complaint ID (e.g. 1001)");
-    searchIdInput->setMaximumWidth(300);
+    QHBoxLayout* searchRow = new QHBoxLayout();
+    searchIdInput = new QLineEdit(page);
+    searchIdInput->setPlaceholderText("Enter Complaint ID (e.g. 1)");
+    searchRow->addWidget(searchIdInput, 2);
 
-    QPushButton* searchBtn = new QPushButton("Search");
-    searchBtn->setMaximumWidth(100);
+    QPushButton* searchBtn = new QPushButton("Search (O(1) Hash Table & DB)", page);
+    searchBtn->setProperty("class", "primaryBtn");
+    searchRow->addWidget(searchBtn, 1);
+    mainLay->addLayout(searchRow);
 
-    row->addWidget(searchIdInput);
-    row->addWidget(searchBtn);
-    row->addStretch();
-    lay->addLayout(row);
-
-    // Result display
-    searchResultLabel = new QLabel("Enter an ID above and click Search.", page);
-    searchResultLabel->setStyleSheet("background: white; border: 1px solid #e0e0e0; "
-                                     "border-radius: 6px; padding: 16px; font-size: 13px; color: #333;");
+    searchResultLabel = new QLabel("", page);
     searchResultLabel->setWordWrap(true);
-    searchResultLabel->setMinimumHeight(220);
-    searchResultLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    searchResultLabel->setTextFormat(Qt::RichText);
-    lay->addWidget(searchResultLabel);
-    lay->addStretch();
+    mainLay->addWidget(searchResultLabel);
 
-    connect(searchBtn,    &QPushButton::clicked, this, &MainWindow::onSearchClicked);
+    searchResultTable = new QTableWidget(page);
+    searchResultTable->setColumnCount(8);
+    searchResultTable->setHorizontalHeaderLabels({"ID", "Citizen", "Category", "Department", "Priority", "Status", "Location", "Date"});
+    searchResultTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    mainLay->addWidget(searchResultTable, 1);
+
+    connect(searchBtn, &QPushButton::clicked, this, &MainWindow::onSearchClicked);
     connect(searchIdInput, &QLineEdit::returnPressed, this, &MainWindow::onSearchClicked);
+    connect(searchResultTable, &QTableWidget::cellDoubleClicked, this, &MainWindow::onComplaintTableDoubleClicked);
 
     return page;
 }
 
-// ─────────────────────────────────────────
-// buildUpdatePage
-// ─────────────────────────────────────────
+void MainWindow::onSearchClicked() {
+    searchResultLabel->setText("");
+    searchResultTable->setRowCount(0);
+
+    bool ok = false;
+    int id = searchIdInput->text().trimmed().toInt(&ok);
+    if (!ok || id <= 0) {
+        searchResultLabel->setText("❌ Please enter a valid numerical Complaint ID.");
+        searchResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        return;
+    }
+
+    // 1. Search in-memory Hash Table first (DSA feature check)
+    Complaint* cached = system.searchById(id);
+
+    // 2. Fetch authenticated from DatabaseManager (role enforcement)
+    auto dbResult = DatabaseManager::instance().getComplaintById(currentUser, id);
+    if (!dbResult.has_value()) {
+        QString err = DatabaseManager::instance().lastError();
+        if (err.contains("Access denied")) {
+            searchResultLabel->setText("🔒 " + err);
+            searchResultLabel->setStyleSheet("color: #c53030; font-weight: bold;");
+        } else {
+            searchResultLabel->setText(QString("❌ Grievance #%1 not found.").arg(id));
+            searchResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        }
+        return;
+    }
+
+    const Complaint& c = dbResult.value();
+    searchResultLabel->setText(QString(" Grievance #%1 found! (Verified via MySQL & In-Memory Hash Table)")
+                                   .arg(id));
+    searchResultLabel->setStyleSheet("color: #38a169; font-weight: bold;");
+
+    searchResultTable->setRowCount(1);
+    searchResultTable->setItem(0, 0, new QTableWidgetItem(QString::number(c.id)));
+    searchResultTable->setItem(0, 1, new QTableWidgetItem(QString::fromStdString(c.citizen)));
+    searchResultTable->setItem(0, 2, new QTableWidgetItem(QString::fromStdString(c.category)));
+    searchResultTable->setItem(0, 3, new QTableWidgetItem(QString::fromStdString(c.department)));
+    searchResultTable->setItem(0, 4, new QTableWidgetItem(QString::fromStdString(priorityName(c.priority))));
+    searchResultTable->setItem(0, 5, new QTableWidgetItem(QString::fromStdString(c.status)));
+    searchResultTable->setItem(0, 6, new QTableWidgetItem(QString::fromStdString(c.location)));
+    searchResultTable->setItem(0, 7, new QTableWidgetItem(QString::fromStdString(c.createdAt)));
+}
+
+// ──────────────────────────────────────────
+// Update Status Page
+// ──────────────────────────────────────────
 QWidget* MainWindow::buildUpdatePage() {
-    QWidget*     page = new QWidget;
-    QVBoxLayout* lay  = new QVBoxLayout(page);
-    lay->setContentsMargins(28, 24, 28, 24);
-    lay->setSpacing(16);
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(16);
 
-    QLabel* title = new QLabel("Update Complaint Status", page);
-    title->setObjectName("pageTitle");
-    lay->addWidget(title);
+    QLabel* header = new QLabel("Update Grievance Status", page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
 
-    QFormLayout* form = new QFormLayout;
-    form->setSpacing(14);
-    form->setLabelAlignment(Qt::AlignRight);
-    form->setContentsMargins(0, 0, 40, 0);
+    QFrame* formCard = new QFrame(page);
+    formCard->setProperty("class", "card");
+    QFormLayout* form = new QFormLayout(formCard);
+    form->setSpacing(12);
 
-    updateIdInput = new QLineEdit;
-    updateIdInput->setPlaceholderText("e.g. 1001");
-    updateIdInput->setMaximumWidth(220);
+    updateIdInput = new QLineEdit(formCard);
+    updateIdInput->setPlaceholderText("Enter Complaint ID");
+    form->addRow("Complaint ID *:", updateIdInput);
 
-    statusCombo = new QComboBox;
-    statusCombo->addItems({"Registered", "In Progress", "Urgent Processing", "Resolved", "Closed"});
-    statusCombo->setMaximumWidth(280);
+    statusCombo = new QComboBox(formCard);
+    statusCombo->addItems({"In Progress", "Resolved", "Closed", "Rejected"});
+    form->addRow("New Status *:", statusCombo);
 
-    QPushButton* updateBtn = new QPushButton("  Update Status  ");
-    updateBtn->setMaximumWidth(180);
-    updateBtn->setMinimumHeight(38);
+    updateNotesInput = new QLineEdit(formCard);
+    updateNotesInput->setPlaceholderText("Optional note for the audit history log...");
+    form->addRow("Audit Note:", updateNotesInput);
 
-    form->addRow("Complaint ID *", updateIdInput);
-    form->addRow("New Status *",   statusCombo);
-    form->addRow("",               updateBtn);
+    updateResultLabel = new QLabel("", formCard);
+    updateResultLabel->setWordWrap(true);
+    form->addRow("", updateResultLabel);
 
-    lay->addLayout(form);
+    QPushButton* updateBtn = new QPushButton("Save Status Change", formCard);
+    updateBtn->setProperty("class", "primaryBtn");
+    form->addRow("", updateBtn);
 
-    updateResultLabel = new QLabel("", page);
-    updateResultLabel->setStyleSheet("font-size: 13px; color: #1565C0; padding: 6px;");
-    lay->addWidget(updateResultLabel);
-    lay->addStretch();
+    mainLay->addWidget(formCard);
+    mainLay->addStretch();
 
     connect(updateBtn, &QPushButton::clicked, this, &MainWindow::onUpdateClicked);
 
     return page;
 }
 
-// ─────────────────────────────────────────
-// buildProcessPage
-// ─────────────────────────────────────────
-QWidget* MainWindow::buildProcessPage() {
-    QWidget*     page = new QWidget;
-    QVBoxLayout* lay  = new QVBoxLayout(page);
-    lay->setContentsMargins(28, 24, 28, 24);
-    lay->setSpacing(20);
-
-    QLabel* title = new QLabel("Process Complaints", page);
-    title->setObjectName("pageTitle");
-    lay->addWidget(title);
-
-    // ── Section 1: FIFO ──
-    QFrame* fifoCard = new QFrame;
-    fifoCard->setStyleSheet("QFrame { background: white; border-radius: 8px; "
-                            "border: 1px solid #e0e0e0; padding: 10px; }");
-    QVBoxLayout* fifoLay = new QVBoxLayout(fifoCard);
-
-    QLabel* fifoTitle = new QLabel("Process by Department (FIFO Queue)", fifoCard);
-    fifoTitle->setStyleSheet("font-size: 15px; font-weight: bold; color: #1565C0;");
-    fifoLay->addWidget(fifoTitle);
-
-    QHBoxLayout* fifoRow = new QHBoxLayout;
-    deptCombo = new QComboBox;
-    deptCombo->addItems({"Road", "Sanitation", "Electrical", "Water", "Drainage", "General"});
-    deptCombo->setMaximumWidth(200);
-
-    QPushButton* processBtn = new QPushButton("Process Next (FIFO)");
-    fifoRow->addWidget(new QLabel("Department:"));
-    fifoRow->addWidget(deptCombo);
-    fifoRow->addWidget(processBtn);
-    fifoRow->addStretch();
-    fifoLay->addLayout(fifoRow);
-
-    lay->addWidget(fifoCard);
-
-    // ── Section 2: Heap ──
-    QFrame* heapCard = new QFrame;
-    heapCard->setStyleSheet("QFrame { background: white; border-radius: 8px; "
-                            "border: 1px solid #e0e0e0; padding: 10px; }");
-    QVBoxLayout* heapLay = new QVBoxLayout(heapCard);
-
-    QLabel* heapTitle = new QLabel("Process Highest Priority (Max-Heap)", heapCard);
-    heapTitle->setStyleSheet("font-size: 15px; font-weight: bold; color: #E65100;");
-    heapLay->addWidget(heapTitle);
-
-    QLabel* heapDesc = new QLabel("Removes and processes the complaint with the highest priority "
-                                   "(High > Medium > Low) from the urgent queue.", heapCard);
-    heapDesc->setWordWrap(true);
-    heapDesc->setStyleSheet("color: #555; font-size: 12px;");
-    heapLay->addWidget(heapDesc);
-
-    QPushButton* urgentBtn = new QPushButton("Process Highest Priority (Heap)");
-    urgentBtn->setStyleSheet("background-color: #E65100;");
-    heapLay->addWidget(urgentBtn);
-
-    lay->addWidget(heapCard);
-
-    // ── Result label ──
-    processResultLabel = new QLabel("", page);
-    processResultLabel->setStyleSheet("background: white; border: 1px solid #e0e0e0; "
-                                      "border-radius: 6px; padding: 14px; font-size: 13px; color: #333;");
-    processResultLabel->setWordWrap(true);
-    processResultLabel->setMinimumHeight(100);
-    processResultLabel->setTextFormat(Qt::RichText);
-    lay->addWidget(processResultLabel);
-    lay->addStretch();
-
-    connect(processBtn, &QPushButton::clicked, this, &MainWindow::onProcessDeptClicked);
-    connect(urgentBtn,  &QPushButton::clicked, this, &MainWindow::onProcessUrgentClicked);
-
-    return page;
-}
-
-// ─────────────────────────────────────────
-// Navigation slots
-// ─────────────────────────────────────────
-void MainWindow::showDashboard() {
-    refreshDashboard();
-    stack->setCurrentIndex(0);
-}
-
-void MainWindow::showRegisterPage() {
-    stack->setCurrentIndex(1);
-}
-
-void MainWindow::showViewPage() {
-    refreshAllComplaintsTable();
-    stack->setCurrentIndex(2);
-}
-
-void MainWindow::showSearchPage() {
-    stack->setCurrentIndex(3);
-}
-
-void MainWindow::showUpdatePage() {
-    stack->setCurrentIndex(4);
-}
-
-void MainWindow::showProcessPage() {
-    stack->setCurrentIndex(5);
-}
-
-// ─────────────────────────────────────────
-// refreshDashboard – update stat cards + recent table
-// ─────────────────────────────────────────
-void MainWindow::refreshDashboard() {
-    totalLabel->setText(QString::number(system.getTotalCount()));
-    pendingLabel->setText(QString::number(system.getPendingCount()));
-    resolvedLabel->setText(QString::number(system.getResolvedCount()));
-
-    // Populate the recent-5 table
-    auto all = system.getAllComplaints();
-    recentTable->setRowCount(0);
-
-    // Take up to last 5 entries
-    int start = (int)all.size() > 5 ? (int)all.size() - 5 : 0;
-    for (int i = (int)all.size() - 1; i >= start; --i) {
-        Complaint* c = all[i];
-        int row = recentTable->rowCount();
-        recentTable->insertRow(row);
-        recentTable->setItem(row, 0, new QTableWidgetItem(QString::number(c->id)));
-        recentTable->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(c->citizen)));
-        recentTable->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(c->category)));
-        recentTable->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(c->department)));
-        recentTable->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(priorityName(c->priority))));
-        recentTable->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(c->status)));
-    }
-}
-
-// ─────────────────────────────────────────
-// refreshAllComplaintsTable
-// ─────────────────────────────────────────
-void MainWindow::refreshAllComplaintsTable() {
-    auto all = system.getAllComplaints();
-    allComplaintsTable->setRowCount(0);
-
-    for (Complaint* c : all) {
-        int row = allComplaintsTable->rowCount();
-        allComplaintsTable->insertRow(row);
-        allComplaintsTable->setItem(row, 0, new QTableWidgetItem(QString::number(c->id)));
-        allComplaintsTable->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(c->citizen)));
-        allComplaintsTable->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(c->category)));
-        allComplaintsTable->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(c->department)));
-        allComplaintsTable->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(priorityName(c->priority))));
-        allComplaintsTable->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(c->status)));
-        allComplaintsTable->setItem(row, 6, new QTableWidgetItem(QString::fromStdString(c->description)));
-        allComplaintsTable->setItem(row, 7, new QTableWidgetItem(QString::fromStdString(c->location)));
-    }
-}
-
-// ─────────────────────────────────────────
-// onRegisterClicked
-// ─────────────────────────────────────────
-void MainWindow::onRegisterClicked() {
-    QString name     = nameInput->text().trimmed();
-    QString category = categoryCombo->currentText();
-    QString desc     = descInput->text().trimmed();
-    QString location = locationInput->text().trimmed();
-    QString prioStr  = priorityCombo->currentText();
-
-    // Validate required fields
-    if (name.isEmpty()) {
-        QMessageBox::warning(this, "Validation Error", "Citizen name is required.");
-        nameInput->setFocus();
-        return;
-    }
-    if (category.isEmpty()) {
-        QMessageBox::warning(this, "Validation Error", "Please select a category.");
-        return;
-    }
-
-    // Map priority combo text to int
-    int priority = 2; // Medium default
-    if (prioStr == "Low")    priority = 1;
-    if (prioStr == "Medium") priority = 2;
-    if (prioStr == "High")   priority = 3;
-
-    int    newId   = 0;
-    std::string newDept;
-
-    bool ok = system.registerComplaint(
-        name.toStdString(),
-        category.toStdString(),
-        desc.toStdString(),
-        location.toStdString(),
-        priority,
-        &newId,
-        &newDept
-    );
-
-    if (ok) {
-        QMessageBox::information(this, "Complaint Registered",
-            QString("✅ Complaint registered successfully!\n\n"
-                    "Complaint ID : %1\n"
-                    "Department   : %2\n\n"
-                    "Please note your Complaint ID for future reference.")
-                .arg(newId)
-                .arg(QString::fromStdString(newDept)));
-
-        // Clear form
-        nameInput->clear();
-        descInput->clear();
-        locationInput->clear();
-        categoryCombo->setCurrentIndex(0);
-        priorityCombo->setCurrentIndex(1);
-
-        refreshDashboard();
-    } else {
-        QMessageBox::critical(this, "Error", "Failed to register complaint. Please try again.");
-    }
-}
-
-// ─────────────────────────────────────────
-// onSearchClicked
-// ─────────────────────────────────────────
-void MainWindow::onSearchClicked() {
-    QString input = searchIdInput->text().trimmed();
-    if (input.isEmpty()) {
-        QMessageBox::warning(this, "Input Required", "Please enter a Complaint ID.");
-        return;
-    }
-
-    bool numOk = false;
-    int  id    = input.toInt(&numOk);
-    if (!numOk) {
-        QMessageBox::warning(this, "Invalid Input", "Complaint ID must be a number.");
-        return;
-    }
-
-    Complaint* c = system.searchById(id);
-    if (!c) {
-        searchResultLabel->setText(
-            "<span style='color:#c62828; font-size:14px;'>❌ Complaint not found.</span><br>"
-            "<span style='color:#555;'>No complaint with ID " + input + " exists in the system.</span>"
-        );
-        return;
-    }
-
-    // Format the result as rich HTML
-    searchResultLabel->setText(
-        QString("<b style='font-size:16px; color:#1565C0;'>Complaint #%1</b><br><br>"
-                "<table style='font-size:13px; line-height:1.8;'>"
-                "<tr><td><b>Citizen&nbsp;&nbsp;&nbsp;</b></td><td>%2</td></tr>"
-                "<tr><td><b>Category&nbsp;&nbsp;</b></td><td>%3</td></tr>"
-                "<tr><td><b>Department</b></td><td>%4</td></tr>"
-                "<tr><td><b>Priority&nbsp;&nbsp;</b></td><td>%5</td></tr>"
-                "<tr><td><b>Status&nbsp;&nbsp;&nbsp;&nbsp;</b></td><td>%6</td></tr>"
-                "<tr><td><b>Location&nbsp;&nbsp;</b></td><td>%7</td></tr>"
-                "<tr><td><b>Description</b></td><td>%8</td></tr>"
-                "</table>")
-            .arg(c->id)
-            .arg(QString::fromStdString(c->citizen))
-            .arg(QString::fromStdString(c->category))
-            .arg(QString::fromStdString(c->department))
-            .arg(QString::fromStdString(priorityName(c->priority)))
-            .arg(QString::fromStdString(c->status))
-            .arg(QString::fromStdString(c->location))
-            .arg(QString::fromStdString(c->description))
-    );
-}
-
-// ─────────────────────────────────────────
-// onUpdateClicked
-// ─────────────────────────────────────────
 void MainWindow::onUpdateClicked() {
-    QString input = updateIdInput->text().trimmed();
-    if (input.isEmpty()) {
-        QMessageBox::warning(this, "Input Required", "Please enter a Complaint ID.");
-        return;
-    }
-
-    bool numOk = false;
-    int  id    = input.toInt(&numOk);
-    if (!numOk) {
-        QMessageBox::warning(this, "Invalid Input", "Complaint ID must be a number.");
+    updateResultLabel->setText("");
+    bool ok = false;
+    int id = updateIdInput->text().trimmed().toInt(&ok);
+    if (!ok || id <= 0) {
+        updateResultLabel->setText("❌ Please enter a valid numerical Complaint ID.");
+        updateResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
         return;
     }
 
     QString newStatus = statusCombo->currentText();
-    bool ok = system.updateStatus(id, newStatus.toStdString());
+    QString notes = updateNotesInput->text().trimmed();
 
-    if (ok) {
-        updateResultLabel->setStyleSheet("font-size:13px; color:#2E7D32; padding:6px;");
-        updateResultLabel->setText(
-            QString("✅ Status of Complaint #%1 updated to '%2' successfully.").arg(id).arg(newStatus));
-        refreshDashboard();
-    } else {
-        updateResultLabel->setStyleSheet("font-size:13px; color:#c62828; padding:6px;");
-        updateResultLabel->setText(
-            QString("❌ Complaint #%1 not found. Please check the ID.").arg(id));
+    // DatabaseManager enforces backend department permission and inserts into status_history
+    bool success = DatabaseManager::instance().updateComplaintStatus(currentUser, id, newStatus, notes);
+    if (!success) {
+        updateResultLabel->setText("❌ " + DatabaseManager::instance().lastError());
+        updateResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        return;
     }
+
+    // Update in-memory data structures
+    system.updateStatus(id, newStatus.toStdString());
+
+    updateResultLabel->setText(QString(" Complaint #%1 status successfully updated to '%2' with audit trail!")
+                                   .arg(id).arg(newStatus));
+    updateResultLabel->setStyleSheet("color: #38a169; font-weight: bold;");
+
+    updateIdInput->clear();
+    updateNotesInput->clear();
 }
 
-// ─────────────────────────────────────────
-// onProcessDeptClicked – FIFO dequeue
-// ─────────────────────────────────────────
+// ──────────────────────────────────────────
+// Process Queue Page (FIFO & Priority Queue)
+// ──────────────────────────────────────────
+QWidget* MainWindow::buildProcessPage() {
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(16);
+
+    QLabel* header = new QLabel("Department Queue & Priority Processing", page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
+
+    QFrame* card = new QFrame(page);
+    card->setProperty("class", "card");
+    QVBoxLayout* cardLay = new QVBoxLayout(card);
+    cardLay->setSpacing(14);
+
+    QHBoxLayout* selRow = new QHBoxLayout();
+    selRow->addWidget(new QLabel("Target Department:", card));
+
+    deptCombo = new QComboBox(card);
+    if (currentUser.isSuperAdmin()) {
+        deptCombo->addItems({"Road", "Sanitation", "Electrical", "Water", "Drainage", "General"});
+    } else {
+        deptCombo->addItem(currentUser.departmentName); // Department Admin restricted to own department
+    }
+    selRow->addWidget(deptCombo, 1);
+    cardLay->addLayout(selRow);
+
+    queueContentsLabel = new QLabel("Queue Contents: (empty)", card);
+    queueContentsLabel->setStyleSheet("background: #edf2f7; padding: 10px; border-radius: 6px; font-family: monospace;");
+    queueContentsLabel->setWordWrap(true);
+    cardLay->addWidget(queueContentsLabel);
+
+    QHBoxLayout* actionRow = new QHBoxLayout();
+    QPushButton* processDeptBtn = new QPushButton("Process Next FIFO Complaint", card);
+    processDeptBtn->setProperty("class", "primaryBtn");
+    actionRow->addWidget(processDeptBtn);
+
+    QPushButton* processUrgentBtn = new QPushButton("⚡ Process Highest Priority (Max-Heap)", card);
+    processUrgentBtn->setProperty("class", "urgentBtn");
+    actionRow->addWidget(processUrgentBtn);
+
+    cardLay->addLayout(actionRow);
+
+    processResultLabel = new QLabel("", card);
+    processResultLabel->setWordWrap(true);
+    cardLay->addWidget(processResultLabel);
+
+    mainLay->addWidget(card);
+    mainLay->addStretch();
+
+    auto updateQueueLabel = [this]() {
+        QString dept = deptCombo->currentText();
+        string info = system.getQueueInfo(dept.toStdString());
+        queueContentsLabel->setText("FIFO Queue: " + QString::fromStdString(info));
+    };
+
+    connect(deptCombo, &QComboBox::currentTextChanged, this, updateQueueLabel);
+    connect(processDeptBtn, &QPushButton::clicked, this, &MainWindow::onProcessDeptClicked);
+    connect(processUrgentBtn, &QPushButton::clicked, this, &MainWindow::onProcessUrgentClicked);
+
+    updateQueueLabel();
+    return page;
+}
+
 void MainWindow::onProcessDeptClicked() {
+    processResultLabel->setText("");
     QString dept = deptCombo->currentText();
-    Complaint out;
-    bool ok = system.processNextFromDept(dept.toStdString(), out);
 
-    if (ok) {
-        processResultLabel->setText(
-            QString("<b style='color:#2E7D32;'>✅ Processed (FIFO) from %1 department:</b><br><br>"
-                    "Complaint ID : <b>%2</b><br>"
-                    "Citizen      : %3<br>"
-                    "Category     : %4<br>"
-                    "Priority     : %5<br>"
-                    "New Status   : <b>Resolved</b>")
-                .arg(dept)
-                .arg(out.id)
-                .arg(QString::fromStdString(out.citizen))
-                .arg(QString::fromStdString(out.category))
-                .arg(QString::fromStdString(priorityName(out.priority)))
-        );
-        refreshDashboard();
-    } else {
-        processResultLabel->setText(
-            QString("<span style='color:#c62828;'>❌ No pending complaints in the <b>%1</b> "
-                    "department queue.</span>").arg(dept));
+    Complaint c;
+    bool ok = system.processNextFromDept(dept.toStdString(), c);
+    if (!ok) {
+        processResultLabel->setText("ℹ️ The FIFO queue for " + dept + " is currently empty.");
+        processResultLabel->setStyleSheet("color: #718096;");
+        return;
+    }
+
+    // Persist status change to database
+    DatabaseManager::instance().updateComplaintStatus(currentUser, c.id, "Resolved", "Resolved via Department FIFO Queue");
+
+    processResultLabel->setText(QString(" Processed Complaint #%1 from %2 queue: Status changed to 'Resolved'.")
+                                    .arg(c.id).arg(dept));
+    processResultLabel->setStyleSheet("color: #38a169; font-weight: bold;");
+
+    queueContentsLabel->setText("FIFO Queue: " + QString::fromStdString(system.getQueueInfo(dept.toStdString())));
+}
+
+void MainWindow::onProcessUrgentClicked() {
+    processResultLabel->setText("");
+    Complaint c;
+    bool ok = system.processUrgent(c);
+    if (!ok) {
+        processResultLabel->setText("ℹ️ No urgent (High Priority) complaints pending in the Priority Queue.");
+        processResultLabel->setStyleSheet("color: #718096;");
+        return;
+    }
+
+    DatabaseManager::instance().updateComplaintStatus(currentUser, c.id, "Urgent Processing", "Dispatched from Max-Heap Priority Queue");
+
+    processResultLabel->setText(QString("⚡ Dispatched Urgent Complaint #%1 [%2] - Category: %3. Status: 'Urgent Processing'.")
+                                    .arg(c.id).arg(QString::fromStdString(c.citizen)).arg(QString::fromStdString(c.category)));
+    processResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+}
+
+// ──────────────────────────────────────────
+// Super Admin User Management Page
+// ──────────────────────────────────────────
+QWidget* MainWindow::buildUserManagementPage() {
+    QWidget* page = new QWidget(this);
+    QVBoxLayout* mainLay = new QVBoxLayout(page);
+    mainLay->setContentsMargins(24, 20, 24, 20);
+    mainLay->setSpacing(16);
+
+    QLabel* header = new QLabel("Department & Administrator Management (Super Admin)", page);
+    header->setObjectName("pageHeader");
+    mainLay->addWidget(header);
+
+    // Create Account Card
+    QFrame* createCard = new QFrame(page);
+    createCard->setProperty("class", "card");
+    QVBoxLayout* cardLay = new QVBoxLayout(createCard);
+
+    QLabel* subHeader = new QLabel("Create New Administrator Account", createCard);
+    subHeader->setStyleSheet("font-size: 14px; font-weight: bold; color: #2d3748;");
+    cardLay->addWidget(subHeader);
+
+    QHBoxLayout* row1 = new QHBoxLayout();
+    newUsernameInput = new QLineEdit(createCard);
+    newUsernameInput->setPlaceholderText("Username");
+    row1->addWidget(newUsernameInput);
+
+    newPasswordInput = new QLineEdit(createCard);
+    newPasswordInput->setPlaceholderText("Password");
+    newPasswordInput->setEchoMode(QLineEdit::Password);
+    row1->addWidget(newPasswordInput);
+
+    newRoleCombo = new QComboBox(createCard);
+    newRoleCombo->addItem("Department Admin", static_cast<int>(UserRole::DeptAdmin));
+    newRoleCombo->addItem("Super Admin", static_cast<int>(UserRole::SuperAdmin));
+    row1->addWidget(newRoleCombo);
+
+    newDeptCombo = new QComboBox(createCard);
+    row1->addWidget(newDeptCombo);
+
+    QPushButton* createBtn = new QPushButton("Create Account", createCard);
+    createBtn->setProperty("class", "primaryBtn");
+    row1->addWidget(createBtn);
+
+    cardLay->addLayout(row1);
+
+    userMgmtResultLabel = new QLabel("", createCard);
+    cardLay->addWidget(userMgmtResultLabel);
+    mainLay->addWidget(createCard);
+
+    // Populate department dropdown
+    auto depts = DatabaseManager::instance().getDepartments();
+    for (const auto& d : depts) {
+        newDeptCombo->addItem(d.name, d.id);
+    }
+
+    connect(newRoleCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        newDeptCombo->setEnabled(idx == 0); // DeptAdmin needs department
+    });
+
+    // Accounts Table
+    usersTable = new QTableWidget(page);
+    usersTable->setColumnCount(4);
+    usersTable->setHorizontalHeaderLabels({"User ID", "Username", "Role", "Assigned Department"});
+    usersTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    usersTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    mainLay->addWidget(usersTable, 1);
+
+    QHBoxLayout* btnRow = new QHBoxLayout();
+    QPushButton* reassignBtn = new QPushButton("Reassign Selected Department", page);
+    btnRow->addWidget(reassignBtn);
+
+    QPushButton* deleteBtn = new QPushButton("Delete Selected User", page);
+    deleteBtn->setStyleSheet("background-color: #e53e3e; color: white; border-radius: 5px; padding: 6px 12px;");
+    btnRow->addWidget(deleteBtn);
+
+    btnRow->addStretch();
+    QPushButton* refreshUsersBtn = new QPushButton("🔄 Refresh Users", page);
+    btnRow->addWidget(refreshUsersBtn);
+
+    mainLay->addLayout(btnRow);
+
+    connect(createBtn, &QPushButton::clicked, this, &MainWindow::onCreateUserClicked);
+    connect(reassignBtn, &QPushButton::clicked, this, &MainWindow::onReassignDepartmentClicked);
+    connect(deleteBtn, &QPushButton::clicked, this, &MainWindow::onDeleteUserClicked);
+    connect(refreshUsersBtn, &QPushButton::clicked, this, &MainWindow::refreshUserManagementTable);
+
+    return page;
+}
+
+void MainWindow::onCreateUserClicked() {
+    userMgmtResultLabel->setText("");
+    QString u = newUsernameInput->text().trimmed();
+    QString p = newPasswordInput->text();
+    UserRole role = static_cast<UserRole>(newRoleCombo->currentData().toInt());
+    std::optional<int> deptId = (role == UserRole::DeptAdmin) ? std::optional<int>(newDeptCombo->currentData().toInt()) : std::nullopt;
+
+    if (u.isEmpty() || p.isEmpty()) {
+        userMgmtResultLabel->setText("❌ Username and password are required.");
+        userMgmtResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        return;
+    }
+
+    bool ok = DatabaseManager::instance().createUser(currentUser, u, p, role, deptId);
+    if (!ok) {
+        userMgmtResultLabel->setText("❌ " + DatabaseManager::instance().lastError());
+        userMgmtResultLabel->setStyleSheet("color: #e53e3e; font-weight: bold;");
+        return;
+    }
+
+    userMgmtResultLabel->setText(QString(" User '%1' created successfully!").arg(u));
+    userMgmtResultLabel->setStyleSheet("color: #38a169; font-weight: bold;");
+
+    newUsernameInput->clear();
+    newPasswordInput->clear();
+    refreshUserManagementTable();
+}
+
+void MainWindow::onReassignDepartmentClicked() {
+    int row = usersTable->currentRow();
+    if (row < 0) {
+        QMessageBox::warning(this, "Select User", "Please select a user from the table to reassign.");
+        return;
+    }
+
+    long long uid = usersTable->item(row, 0)->text().toLongLong();
+    QString uname = usersTable->item(row, 1)->text();
+    QString role = usersTable->item(row, 2)->text();
+
+    if (role == "Super Admin") {
+        QMessageBox::warning(this, "Action Not Allowed", "Super Admin cannot be assigned to a specific department.");
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Reassign Department for " + uname);
+    dlg.setFixedSize(320, 160);
+
+    QFormLayout form(&dlg);
+    QComboBox deptSel(&dlg);
+    auto depts = DatabaseManager::instance().getDepartments();
+    for (const auto& d : depts) {
+        deptSel.addItem(d.name, d.id);
+    }
+    form.addRow("New Department:", &deptSel);
+
+    QDialogButtonBox btns(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form.addRow(&btns);
+    connect(&btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(&btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() == QDialog::Accepted) {
+        int newDeptId = deptSel.currentData().toInt();
+        bool ok = DatabaseManager::instance().updateUserDepartment(currentUser, uid, newDeptId);
+        if (ok) {
+            QMessageBox::information(this, "Success", "Department reassigned successfully!");
+            refreshUserManagementTable();
+        } else {
+            QMessageBox::critical(this, "Error", DatabaseManager::instance().lastError());
+        }
     }
 }
 
-// ─────────────────────────────────────────
-// onProcessUrgentClicked – max-heap pop
-// ─────────────────────────────────────────
-void MainWindow::onProcessUrgentClicked() {
-    Complaint out;
-    bool ok = system.processUrgent(out);
-
-    if (ok) {
-        processResultLabel->setText(
-            QString("<b style='color:#E65100;'>⚡ Processed Highest Priority Complaint:</b><br><br>"
-                    "Complaint ID : <b>%1</b><br>"
-                    "Citizen      : %2<br>"
-                    "Category     : %3<br>"
-                    "Department   : %4<br>"
-                    "Priority     : %5<br>"
-                    "New Status   : <b>Urgent Processing</b>")
-                .arg(out.id)
-                .arg(QString::fromStdString(out.citizen))
-                .arg(QString::fromStdString(out.category))
-                .arg(QString::fromStdString(out.department))
-                .arg(QString::fromStdString(priorityName(out.priority)))
-        );
-        refreshDashboard();
-    } else {
-        processResultLabel->setText(
-            "<span style='color:#c62828;'>❌ The urgent priority queue is empty. "
-            "Register some HIGH priority complaints first.</span>");
+void MainWindow::onDeleteUserClicked() {
+    int row = usersTable->currentRow();
+    if (row < 0) {
+        QMessageBox::warning(this, "Select User", "Please select a user from the table to delete.");
+        return;
     }
+
+    long long uid = usersTable->item(row, 0)->text().toLongLong();
+    QString uname = usersTable->item(row, 1)->text();
+
+    if (uid == currentUser.id) {
+        QMessageBox::warning(this, "Action Not Allowed", "You cannot delete your own account.");
+        return;
+    }
+
+    auto reply = QMessageBox::question(this, "Confirm Deletion",
+                                       QString("Are you sure you want to delete user '%1' (ID: %2)?").arg(uname).arg(uid),
+                                       QMessageBox::Yes | QMessageBox::No);
+    if (reply == QMessageBox::Yes) {
+        bool ok = DatabaseManager::instance().deleteUser(currentUser, uid);
+        if (ok) {
+            QMessageBox::information(this, "Deleted", "User deleted successfully.");
+            refreshUserManagementTable();
+        } else {
+            QMessageBox::critical(this, "Error", DatabaseManager::instance().lastError());
+        }
+    }
+}
+
+void MainWindow::refreshUserManagementTable() {
+    auto users = DatabaseManager::instance().getAllUsers(currentUser);
+    usersTable->setRowCount((int)users.size());
+
+    for (int i = 0; i < (int)users.size(); ++i) {
+        const auto& u = users[i];
+        usersTable->setItem(i, 0, new QTableWidgetItem(QString::number(u.id)));
+        usersTable->setItem(i, 1, new QTableWidgetItem(u.username));
+        usersTable->setItem(i, 2, new QTableWidgetItem(u.roleName()));
+        usersTable->setItem(i, 3, new QTableWidgetItem(u.isSuperAdmin() ? "All Departments" : u.departmentName));
+    }
+}
+
+// ──────────────────────────────────────────
+// Details & Audit History Modal
+// ──────────────────────────────────────────
+void MainWindow::onComplaintTableDoubleClicked(int row, int col) {
+    Q_UNUSED(col);
+    QTableWidget* table = qobject_cast<QTableWidget*>(sender());
+    if (!table) return;
+
+    QTableWidgetItem* idItem = table->item(row, 0);
+    if (idItem) {
+        showComplaintDetailsDialog(idItem->text().toInt());
+    }
+}
+
+void MainWindow::onViewHistoryClicked() {
+    int row = allComplaintsTable->currentRow();
+    if (row < 0) {
+        QMessageBox::information(this, "Select Row", "Please select a complaint row from the table first.");
+        return;
+    }
+    int id = allComplaintsTable->item(row, 0)->text().toInt();
+    showComplaintDetailsDialog(id);
+}
+
+void MainWindow::showComplaintDetailsDialog(int complaintId) {
+    auto compOpt = DatabaseManager::instance().getComplaintById(currentUser, complaintId);
+    if (!compOpt.has_value()) {
+        QMessageBox::warning(this, "Error", DatabaseManager::instance().lastError().isEmpty() ? "Complaint not found or access denied." : DatabaseManager::instance().lastError());
+        return;
+    }
+
+    const Complaint& c = compOpt.value();
+    auto history = DatabaseManager::instance().getComplaintHistory(currentUser, complaintId);
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QString("Grievance Details & Audit History — #%1").arg(c.id));
+    dlg.resize(650, 520);
+
+    QVBoxLayout* lay = new QVBoxLayout(&dlg);
+
+    // Complaint metadata card
+    QFrame* infoCard = new QFrame(&dlg);
+    infoCard->setStyleSheet("background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;");
+    QGridLayout* grid = new QGridLayout(infoCard);
+
+    grid->addWidget(new QLabel(QString("<b>Citizen:</b> %1").arg(QString::fromStdString(c.citizen))), 0, 0);
+    grid->addWidget(new QLabel(QString("<b>Contact:</b> %1").arg(QString::fromStdString(c.contact.empty() ? "N/A" : c.contact))), 0, 1);
+    grid->addWidget(new QLabel(QString("<b>Category:</b> %1").arg(QString::fromStdString(c.category))), 1, 0);
+    grid->addWidget(new QLabel(QString("<b>Department:</b> %1").arg(QString::fromStdString(c.department))), 1, 1);
+    grid->addWidget(new QLabel(QString("<b>Priority:</b> %1").arg(QString::fromStdString(priorityName(c.priority)))), 2, 0);
+    grid->addWidget(new QLabel(QString("<b>Current Status:</b> %1").arg(QString::fromStdString(c.status))), 2, 1);
+    grid->addWidget(new QLabel(QString("<b>Location:</b> %1").arg(QString::fromStdString(c.location))), 3, 0, 1, 2);
+    grid->addWidget(new QLabel(QString("<b>Description:</b> %1").arg(QString::fromStdString(c.description))), 4, 0, 1, 2);
+    grid->addWidget(new QLabel(QString("<b>Filed At:</b> %1").arg(QString::fromStdString(c.createdAt))), 5, 0, 1, 2);
+
+    lay->addWidget(infoCard);
+
+    QLabel* histTitle = new QLabel("📋 Status Change Audit Trail", &dlg);
+    histTitle->setStyleSheet("font-size: 13px; font-weight: bold; margin-top: 10px;");
+    lay->addWidget(histTitle);
+
+    QTableWidget* histTable = new QTableWidget(&dlg);
+    histTable->setColumnCount(5);
+    histTable->setHorizontalHeaderLabels({"Timestamp", "Previous", "New Status", "Changed By", "Notes"});
+    histTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    histTable->setRowCount((int)history.size());
+
+    for (int i = 0; i < (int)history.size(); ++i) {
+        const auto& h = history[i];
+        histTable->setItem(i, 0, new QTableWidgetItem(h.changedAt));
+        histTable->setItem(i, 1, new QTableWidgetItem(h.previousStatus));
+        histTable->setItem(i, 2, new QTableWidgetItem(h.newStatus));
+        histTable->setItem(i, 3, new QTableWidgetItem(h.changedByUsername));
+        histTable->setItem(i, 4, new QTableWidgetItem(h.notes));
+    }
+    lay->addWidget(histTable, 1);
+
+    QDialogButtonBox* closeBtn = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    connect(closeBtn, &QDialogButtonBox::rejected, &dlg, &QDialog::accept);
+    lay->addWidget(closeBtn);
+
+    dlg.exec();
+}
+
+// ──────────────────────────────────────────
+// Navigation Switchers
+// ──────────────────────────────────────────
+void MainWindow::showDashboard() {
+    stack->setCurrentWidget(dashboardPage);
+    refreshDashboard();
+}
+
+void MainWindow::showRegisterPage() {
+    stack->setCurrentWidget(registerPage);
+    registerResultLabel->setText("");
+}
+
+void MainWindow::showViewPage() {
+    stack->setCurrentWidget(viewPage);
+    refreshAllComplaintsTable();
+}
+
+void MainWindow::showSearchPage() {
+    stack->setCurrentWidget(searchPage);
+    searchResultLabel->setText("");
+}
+
+void MainWindow::showUpdatePage() {
+    stack->setCurrentWidget(updatePage);
+    updateResultLabel->setText("");
+}
+
+void MainWindow::showProcessPage() {
+    stack->setCurrentWidget(processPage);
+    processResultLabel->setText("");
+    QString dept = deptCombo->currentText();
+    queueContentsLabel->setText("FIFO Queue: " + QString::fromStdString(system.getQueueInfo(dept.toStdString())));
+}
+
+void MainWindow::showUserManagementPage() {
+    if (!currentUser.isSuperAdmin()) return;
+    stack->setCurrentWidget(userManagementPage);
+    refreshUserManagementTable();
 }
