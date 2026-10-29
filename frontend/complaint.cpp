@@ -1,6 +1,7 @@
 #include "complaint.h"
 #include <stdexcept>
 #include <sstream>
+#include <algorithm>
 
 using std::string;
 using std::vector;
@@ -22,12 +23,17 @@ string departmentFor(const string& category) {
 // ComplaintList
 // ══════════════════════════════════════════
 ComplaintList::~ComplaintList() {
+    clear();
+}
+
+void ComplaintList::clear() {
     ComplaintNode* cur = head;
     while (cur) {
         ComplaintNode* nxt = cur->next;
         delete cur;
         cur = nxt;
     }
+    head = nullptr;
 }
 
 void ComplaintList::add(const Complaint& c) {
@@ -65,6 +71,10 @@ vector<Complaint*> ComplaintList::getAllComplaints() {
 // HashTable
 // ══════════════════════════════════════════
 HashTable::HashTable() {
+    clear();
+}
+
+void HashTable::clear() {
     for (int i = 0; i < SIZE; ++i) {
         table[i].key   = -1;
         table[i].value = nullptr;
@@ -73,16 +83,15 @@ HashTable::HashTable() {
 
 void HashTable::insert(int id, Complaint* ptr) {
     int idx = hash(id);
-    // Linear probing
+    // Linear probing with collision handling
     for (int i = 0; i < SIZE; ++i) {
         int probe = (idx + i) % SIZE;
-        if (table[probe].key == -1) {
+        if (table[probe].key == -1 || table[probe].key == id) {
             table[probe].key   = id;
             table[probe].value = ptr;
             return;
         }
     }
-    // Table full – should never happen for typical inputs (SIZE=17 > expected load)
 }
 
 Complaint* HashTable::search(int id) const {
@@ -99,12 +108,18 @@ Complaint* HashTable::search(int id) const {
 // ComplaintQueue  (FIFO)
 // ══════════════════════════════════════════
 ComplaintQueue::~ComplaintQueue() {
+    clear();
+}
+
+void ComplaintQueue::clear() {
     QueueNode* cur = front;
     while (cur) {
         QueueNode* nxt = cur->next;
         delete cur;
         cur = nxt;
     }
+    front = rear = nullptr;
+    count = 0;
 }
 
 void ComplaintQueue::enqueue(Complaint* c) {
@@ -137,7 +152,7 @@ string ComplaintQueue::contentsAsString() const {
         oss << "#" << cur->data->id
             << " [" << cur->data->citizen << "] "
             << cur->data->status;
-        if (cur->next) oss << " → ";
+        if (cur->next) oss << " \xe2\x86\x92 ";
         cur = cur->next;
     }
     return oss.str();
@@ -202,7 +217,40 @@ ComplaintQueue& CivicSystem::getQueue(const string& dept) {
     return general;
 }
 
+void CivicSystem::clearAll() {
+    complaints.clear();
+    index.clear();
+    road.clear();
+    sanitation.clear();
+    electrical.clear();
+    water.clear();
+    drainage.clear();
+    general.clear();
+    urgent.clear();
+}
+
+void CivicSystem::loadFromRecords(const vector<Complaint>& records) {
+    clearAll();
+    int maxId = 1000;
+    for (const auto& rec : records) {
+        complaints.add(rec);
+        Complaint* ptr = complaints.find(rec.id);
+        if (ptr) {
+            index.insert(ptr->id, ptr);
+            if (ptr->status != "Resolved" && ptr->status != "Closed") {
+                getQueue(ptr->department).enqueue(ptr);
+                if (ptr->priority == HIGH) {
+                    urgent.push(ptr);
+                }
+            }
+            if (ptr->id > maxId) maxId = ptr->id;
+        }
+    }
+    nextId = maxId + 1;
+}
+
 bool CivicSystem::registerComplaint(const string& citizen,
+                                    const string& contact,
                                     const string& category,
                                     const string& description,
                                     const string& location,
@@ -215,6 +263,7 @@ bool CivicSystem::registerComplaint(const string& citizen,
     Complaint c;
     c.id          = nextId++;
     c.citizen     = citizen;
+    c.contact     = contact;
     c.category    = category;
     c.description = description;
     c.location    = location;

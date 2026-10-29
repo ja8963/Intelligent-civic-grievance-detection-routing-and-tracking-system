@@ -16,16 +16,24 @@ inline string priorityName(Priority p) {
     return "Low";
 }
 
+inline Priority priorityFromName(const string& name) {
+    if (name == "High") return HIGH;
+    if (name == "Medium") return MEDIUM;
+    return LOW;
+}
+
 // A single civic complaint record
 struct Complaint {
-    int    id;
-    string citizen;
-    string category;
-    string department;
-    Priority priority;
-    string status;
-    string description;
-    string location;
+    int      id = 0;
+    string   citizen;
+    string   contact;      // Citizen contact details (phone/email)
+    string   category;
+    string   department;
+    Priority priority = LOW;
+    string   status;
+    string   description;
+    string   location;
+    string   createdAt;    // Timestamp
 };
 
 // ──────────────────────────────────────────
@@ -48,17 +56,18 @@ public:
     void add(const Complaint& c);
     Complaint* find(int id);                  // returns pointer into the list or nullptr
     vector<Complaint*> getAllComplaints();     // traverse and return all pointers
+    void clear();
 
 private:
     ComplaintNode* head;
 };
 
 // ──────────────────────────────────────────
-// Hash table with linear probing (SIZE = 17)
-// Maps complaint-id -> index in the linked list (we store the Complaint* directly)
+// Hash table with linear probing (SIZE = 1009 for robust capacity)
+// Maps complaint-id -> pointer into the linked list for O(1) lookup
 // ──────────────────────────────────────────
 class HashTable {
-    static const int SIZE = 17;
+    static const int SIZE = 1009;
     struct Entry {
         int key;          // complaint id, -1 means empty
         Complaint* value; // pointer into the linked list
@@ -66,12 +75,13 @@ class HashTable {
     };
     Entry table[SIZE];
 
-    int hash(int key) const { return key % SIZE; }
+    int hash(int key) const { return (key % SIZE + SIZE) % SIZE; }
 
 public:
     HashTable();
     void     insert(int id, Complaint* ptr);
     Complaint* search(int id) const;
+    void     clear();
 };
 
 // ──────────────────────────────────────────
@@ -95,6 +105,7 @@ public:
     bool dequeue(Complaint*& out);   // out gets the front complaint; returns false if empty
     bool empty() const  { return count == 0; }
     int  size()  const  { return count; }
+    void clear();
 
     // Returns a formatted string listing all items currently in the queue
     string contentsAsString() const;
@@ -116,6 +127,7 @@ public:
     void push(Complaint* c);
     bool pop(Complaint*& out);   // removes and returns the highest-priority complaint
     Complaint* peekTop() const;  // view without removing
+    void clear() { heap.clear(); }
 
 private:
     vector<Complaint*> heap;
@@ -130,7 +142,7 @@ private:
 string departmentFor(const string& category);
 
 // ──────────────────────────────────────────
-// Top-level system object used by the GUI
+// Top-level system object used by the GUI & cached in memory
 // ──────────────────────────────────────────
 class CivicSystem {
 public:
@@ -138,12 +150,27 @@ public:
 
     // Register a new complaint; returns true and fills *outId with the new id
     bool registerComplaint(const string& citizen,
+                           const string& contact,
                            const string& category,
                            const string& description,
                            const string& location,
                            int            priority,
                            int*           outId = nullptr,
                            string*        outDept = nullptr);
+
+    // Overload for backward compatibility
+    bool registerComplaint(const string& citizen,
+                           const string& category,
+                           const string& description,
+                           const string& location,
+                           int            priority,
+                           int*           outId = nullptr,
+                           string*        outDept = nullptr) {
+        return registerComplaint(citizen, "", category, description, location, priority, outId, outDept);
+    }
+
+    // Populate system from loaded database records
+    void loadFromRecords(const vector<Complaint>& records);
 
     // Search by complaint ID; returns nullptr if not found
     Complaint* searchById(int id);
@@ -166,6 +193,8 @@ public:
 
     // Returns a human-readable summary of what is currently in a dept queue
     string getQueueInfo(const string& dept);
+
+    void clearAll();
 
 private:
     ComplaintList  complaints;   // master linked list

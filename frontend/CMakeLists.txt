@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
 
 add_executable(CivicGrievanceGUI
     main.cpp
@@ -18,11 +18,17 @@ add_executable(CivicGrievanceGUI
     logindialog.h
     complaint.cpp
     complaint.h
+    databasemanager.cpp
+    databasemanager.h
+    user.h
 )
 
-target_link_libraries(CivicGrievanceGUI PRIVATE Qt6::Widgets)
+target_link_libraries(CivicGrievanceGUI PRIVATE
+    Qt6::Widgets
+    Qt6::Sql
+)
 
-# On Windows do not open a console window alongside the GUI
+# On Windows do not open a console window alongside the GUI in release
 if(WIN32)
-    set_target_properties(CivicGrievanceGUI PROPERTIES WIN32_EXECUTABLE TRUE)
+    set_target_properties(CivicGrievanceGUI PROPERTIES WIN32_EXECUTABLE FALSE)
 endif()
