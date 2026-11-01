@@ -89,3 +89,8 @@ Run the compiled executable:
 2. Click **Create Super Admin** to initialize your initial administrator account with your chosen secure username and password.
 3. Log in with your new credentials to access the **Super Admin Portal**.
 4. From the **Manage Admins** tab, create Department Admin accounts for municipal workers.
+
+## Complaint Status History
+
+The system maintains the status history of complaints.
+Users can update complaint status and view previous status records.
